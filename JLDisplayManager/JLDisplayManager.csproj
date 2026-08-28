@@ -19,6 +19,10 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
 
+    <!-- No symbols in a release build: the portable drop is binaries only. -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+
     <AssemblyName>JungleLeopardDisplayManager</AssemblyName>
     <RootNamespace>JLDisplayManager</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>

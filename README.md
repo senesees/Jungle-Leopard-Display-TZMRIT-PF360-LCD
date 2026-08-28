@@ -38,11 +38,28 @@ without it, calibration reports elapsed time instead of progress.
 
 ---
 
+## Download
+
+A portable x64 build is attached to each [release][releases]: unzip anywhere and
+run, no installer and no registry keys. It carries the tray app, the CLI and the
+native core — about 220 KB — and still wants the two prerequisites above, since
+neither the .NET runtime nor ffmpeg is bundled.
+
+[releases]: https://github.com/senesees/Jungle-Leopard-Display-TZMRIT-PF360-LCD/releases
+
+---
+
 ## Building
 
 ```sh
 msbuild "Jungle Leopard Display.sln" -p:Configuration=Release -p:Platform=x64 -restore
 ```
+
+Release builds emit **no PDBs** — `DebugInformationFormat` is `None` and
+`GenerateDebugInformation` is `false` for every Release configuration, and the
+manager sets `DebugType=none`. Debug configurations keep their symbols, though
+the solution maps `Debug|x64` onto `Release|x64` for every project, so a plain
+solution build never produces any.
 
 Everything lands in `x64\Release\`, native and managed together, so
 `DllImport` resolves with no probing paths.

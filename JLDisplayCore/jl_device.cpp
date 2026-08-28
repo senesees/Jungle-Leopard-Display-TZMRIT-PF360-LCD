@@ -256,15 +256,34 @@ namespace jl {
 
         SendCommand(cmd::Live);
         Sleep(100);
-        if (!SendImageFrame(jpeg)) return false;
 
-        DWORD last = GetTickCount();
+        // Send it over and over rather than once. The panel draws out of a
+        // streaming buffer that the NEXT frame's bytes push through, and it
+        // needs a moment to settle into live mode before it takes pixels at
+        // all. Video never exposed either fact: ffmpeg's startup covers the
+        // mode change, and there is always another frame 33 ms behind the one
+        // being drawn. A still written once and then left alone lands
+        // half-drawn and stays that way — which is exactly what a "disfigured"
+        // picture on an otherwise healthy panel looks like. So hold a still the
+        // way the panel expects to be fed: as a video that happens not to
+        // change. At 250 ms it costs a fifth of the bandwidth playback already
+        // sustains.
+        DWORD now = GetTickCount();
+        DWORD lastFrame = now - kStillRefreshMs;   // due immediately
+        DWORD lastKeepAlive = now;
+
         while (!(abort && abort(abortUser))) {
-            Sleep(100);
-            if (GetTickCount() - last >= kLiveKeepAliveMs) {
-                if (!KeepAlive()) return false;   // live mode lapses without this
-                last = GetTickCount();
+            now = GetTickCount();
+
+            if (now - lastFrame >= kStillRefreshMs) {
+                if (!SendImageFrame(jpeg)) return false;
+                lastFrame = now;
             }
+            if (now - lastKeepAlive >= kLiveKeepAliveMs) {
+                if (!KeepAlive()) return false;   // live mode lapses without this
+                lastKeepAlive = now;
+            }
+            Sleep(20);
         }
         return true;
     }

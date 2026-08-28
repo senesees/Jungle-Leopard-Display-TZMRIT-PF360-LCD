@@ -229,6 +229,20 @@ The checksum covers the length bytes too.
 **Live mode lapses** unless `0x11` is re-sent about every **1500 ms**. This is
 why showing a still keeps a thread alive rather than firing and forgetting.
 
+**A still must be re-sent, not sent once.** The panel commits a frame only when
+the bytes behind it arrive, and it needs a moment after `0x11` before it takes
+pixels at all. Video hides both — ffmpeg's startup covers the mode change and
+the next frame is 33 ms away — but a picture written once and then left alone
+stays half-drawn on the glass. `HoldStill` re-sends the same frame every
+**250 ms**, a fifth of the bandwidth playback already sustains.
+
+**Stills must be 4:2:0, like every video frame.** ffmpeg matches the JPEG
+encoder to its *input*, so video (`yuv420p`) lands on `yuvj420p` while an RGB
+still (PNG, BMP, a screenshot) lands on a 4:4:4 layout this panel cannot
+decode. The image path pins `-pix_fmt yuvj420p`, and the "already conforms,
+send as-is" shortcut checks the SOF marker for baseline 4:2:0 rather than
+trusting the dimensions alone.
+
 **Before talking to the device**, the vendor app sends `FF D9 FF D9` (a JPEG
 end-of-image marker, flushing any partial frame), pauses, then four zero bytes.
 This client does the same.

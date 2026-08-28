@@ -19,6 +19,10 @@ namespace jl {
         // Pulls width/height out of a JPEG's SOFn marker.
         bool JpegSize(const std::vector<uint8_t>& j, int& w, int& h);
 
+        // True only for the one JPEG flavour the panel's decoder accepts:
+        // baseline SOF0, three components, 4:2:0 chroma subsampling.
+        bool JpegIsBaseline420(const std::vector<uint8_t>& j);
+
         uint16_t Sum16(const std::vector<uint8_t>& b, size_t from, size_t to);
 
         // -------------------------------------------------------------------

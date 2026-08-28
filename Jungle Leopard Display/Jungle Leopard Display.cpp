@@ -156,23 +156,26 @@ int main(int argc, char** argv)
     }
 
     if (!jpeg.empty()) {
-        device.SendCommand(jl::cmd::Live);
-        Sleep(100);
-
-        if (!device.SendImageFrame(jpeg)) return 1;
-        printf("sent %zu byte frame\n", jpeg.size());
-
-        if (!once) {
+        if (once) {
+            // The panel only commits a frame once more bytes arrive behind it,
+            // so a single write leaves it half-drawn. Send the frame twice and
+            // flush, so --once still leaves a clean picture on the glass.
+            device.SendCommand(jl::cmd::Live);
+            Sleep(100);
+            if (!device.SendImageFrame(jpeg)) return 1;
+            Sleep(jl::kStillRefreshMs);
+            if (!device.SendImageFrame(jpeg)) return 1;
+            device.FlushEoi();
+            printf("sent %zu byte frame\n", jpeg.size());
+        }
+        else {
+            // HoldStill re-sends on its own and handles the keepalive; the loop
+            // that used to live here did neither, so the panel kept whatever
+            // half-drawn frame the single write left it with.
             SetConsoleCtrlHandler(CtrlHandler, TRUE);
-            printf("holding live mode (Ctrl-C to stop)...\n");
-            DWORD last = GetTickCount();
-            while (g_running) {
-                Sleep(100);
-                if (GetTickCount() - last >= jl::kLiveKeepAliveMs) {
-                    device.KeepAlive();   // live mode lapses without this
-                    last = GetTickCount();
-                }
-            }
+            printf("sent %zu byte frame, holding live mode (Ctrl-C to stop)...\n",
+                jpeg.size());
+            device.HoldStill(jpeg, ShouldAbort, nullptr);
             printf("\nstopping\n");
             device.FlushEoi();
         }

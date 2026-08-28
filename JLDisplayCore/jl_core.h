@@ -37,6 +37,7 @@ namespace jl {
     }
 
     constexpr DWORD  kLiveKeepAliveMs = 1500;        // vendor app's interval
+    constexpr DWORD  kStillRefreshMs = 250;         // re-send rate for a held still
     constexpr size_t kMaxJpegBytes = 80 * 1024;   // maxSize for this panel
     constexpr size_t kSafeJpegBytes = 64 * 1024;   // calibration target, leaves headroom
     constexpr int    kPanelWidth = 960;
@@ -139,8 +140,11 @@ namespace jl {
         // Live mode lapses unless this is re-sent about every kLiveKeepAliveMs.
         bool KeepAlive() { return SendCommand(cmd::Live); }
 
-        // Sends a still and holds live mode until `abort` says stop. Blocking;
-        // this is what "showing a picture" actually means on this panel.
+        // Holds a still until `abort` says stop, by re-sending it at
+        // kStillRefreshMs. The panel is a live-stream device and only draws a
+        // frame once the following one arrives, so a still has to be sent
+        // repeatedly rather than once. Blocking; this is what "showing a
+        // picture" actually means on this panel.
         bool HoldStill(const std::vector<uint8_t>& jpeg, AbortFn abort, void* abortUser);
 
         // Flushes any partial frame with a bare JPEG end-of-image marker.

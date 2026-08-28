@@ -37,24 +37,56 @@ namespace jl {
             return got > 0;
         }
 
+        namespace {
+
+            // Offset of the SOFn segment's leading FF, or npos. Every SOFn shares
+            // one layout: FF Cn | len | precision | height | width | ncomp |
+            // (id, sampling, quant table) x ncomp.
+            size_t FindSof(const std::vector<uint8_t>& j)
+            {
+                if (j.size() < 4 || j[0] != 0xFF || j[1] != 0xD8) return std::string::npos;
+                size_t i = 2;
+                while (i + 9 < j.size()) {
+                    if (j[i] != 0xFF) { ++i; continue; }
+                    uint8_t marker = j[i + 1];
+                    if (marker == 0xD8 || marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7)) { i += 2; continue; }
+                    size_t seglen = (size_t)((j[i + 2] << 8) | j[i + 3]);
+                    if (marker >= 0xC0 && marker <= 0xCF &&
+                        marker != 0xC4 && marker != 0xC8 && marker != 0xCC) {
+                        return i;
+                    }
+                    i += 2 + seglen;
+                }
+                return std::string::npos;
+            }
+
+        }  // namespace
+
         bool JpegSize(const std::vector<uint8_t>& j, int& w, int& h)
         {
-            if (j.size() < 4 || j[0] != 0xFF || j[1] != 0xD8) return false;
-            size_t i = 2;
-            while (i + 9 < j.size()) {
-                if (j[i] != 0xFF) { ++i; continue; }
-                uint8_t marker = j[i + 1];
-                if (marker == 0xD8 || marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7)) { i += 2; continue; }
-                size_t seglen = (size_t)((j[i + 2] << 8) | j[i + 3]);
-                if (marker >= 0xC0 && marker <= 0xCF &&
-                    marker != 0xC4 && marker != 0xC8 && marker != 0xCC) {
-                    h = (j[i + 5] << 8) | j[i + 6];
-                    w = (j[i + 7] << 8) | j[i + 8];
-                    return true;
-                }
-                i += 2 + seglen;
-            }
-            return false;
+            const size_t i = FindSof(j);
+            if (i == std::string::npos) return false;
+            h = (j[i + 5] << 8) | j[i + 6];
+            w = (j[i + 7] << 8) | j[i + 8];
+            return true;
+        }
+
+        // The panel's decoder only handles what its vendor app ever feeds it:
+        // baseline, three components, 4:2:0. ffmpeg's mjpeg encoder produces
+        // exactly that from video (yuv420p in, yuvj420p out) but picks a 4:4:4
+        // layout for RGB stills, which the panel renders as garbage. So a JPEG
+        // that is not plainly 4:2:0 must go back through ffmpeg rather than
+        // taking the as-is shortcut.
+        bool JpegIsBaseline420(const std::vector<uint8_t>& j)
+        {
+            const size_t i = FindSof(j);
+            if (i == std::string::npos) return false;
+            if (j[i + 1] != 0xC0) return false;      // SOF0 only; progressive is out
+            if (i + 18 >= j.size()) return false;    // room for three component specs
+            if (j[i + 9] != 3) return false;         // Y, Cb, Cr
+            // Sampling factors pack H in the high nibble and V in the low one, so
+            // luma 2x2 against chroma 1x1 is 4:2:0.
+            return j[i + 11] == 0x22 && j[i + 14] == 0x11 && j[i + 17] == 0x11;
         }
 
         uint16_t Sum16(const std::vector<uint8_t>& b, size_t from, size_t to)

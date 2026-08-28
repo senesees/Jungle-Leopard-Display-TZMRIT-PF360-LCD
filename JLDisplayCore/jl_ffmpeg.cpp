@@ -280,13 +280,16 @@ namespace jl {
             return std::wstring(dir) + L"jl_frame_" + std::to_wstring(GetCurrentProcessId()) + L".jpg";
         }
 
-        // Skips ffmpeg entirely when the input already conforms.
+        // Skips ffmpeg entirely when the input already conforms. Size alone is not
+        // enough: a 960x480 JPEG that is progressive or 4:4:4 still has to be
+        // re-encoded, because the panel only decodes baseline 4:2:0.
         bool AlreadyConforming(const std::vector<uint8_t>& data)
         {
             if (data.size() < 3 || data.size() > kMaxJpegBytes) return false;
             if (data[0] != 0xFF || data[1] != 0xD8) return false;
             int w = 0, h = 0;
-            return detail::JpegSize(data, w, h) && w == kPanelWidth && h == kPanelHeight;
+            return detail::JpegSize(data, w, h) && w == kPanelWidth && h == kPanelHeight
+                && detail::JpegIsBaseline420(data);
         }
 
         // ffmpeg's -q:v runs 2 (best) to 31 (worst), so we walk it upward until the
@@ -317,6 +320,12 @@ namespace jl {
                     L" -i \"" + input + L"\""
                     L" -vf \"" + filter + L"\""
                     L" -frames:v 1"
+                    // Without this ffmpeg matches the encoder to the INPUT: video
+                    // decodes to yuv420p and lands on yuvj420p, but an RGB still
+                    // (PNG, BMP, screenshot) lands on a 4:4:4 layout the panel
+                    // cannot decode and draws as a smeared mess. Pin it to the
+                    // same format the video path already proves works.
+                    L" -pix_fmt yuvj420p"
                     L" -q:v " + std::to_wstring(q) +
                     L" \"" + tmp + L"\"";
 

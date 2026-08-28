@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <UseWPF>true</UseWPF>
+    <!-- For NotifyIcon: the tray is Windows Forms territory and always has been.
+         Pulling in the whole toolkit for one control is cheaper than taking a
+         third-party dependency for it. -->
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <!-- JLDisplayNative.dll is x64 only, so this must be too. -->
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+
+    <AssemblyName>JungleLeopardDisplayManager</AssemblyName>
+    <RootNamespace>JLDisplayManager</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <AssemblyTitle>Jungle Leopard Display Manager</AssemblyTitle>
+    <Product>Jungle Leopard Display</Product>
+    <Version>1.0.0</Version>
+
+    <!-- Land beside the native output so DllImport resolves with no probing
+         paths, no copy step, and no chance of loading a stale DLL. -->
+    <OutputPath>$(SolutionDir)x64\$(Configuration)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Build order only: this is a native DLL loaded by DllImport, not an
+         assembly to reference.
+
+         Platform must be pinned explicitly. Letting it float means MSBuild
+         builds the vcxproj a second time under a different platform, which
+         collides with the first build's object files in the shared intermediate
+         directory (LNK1257, "front end and back end not compatible"). The .NET
+         properties are undefined because a C++ project has no idea what a
+         TargetFramework is. -->
+    <ProjectReference Include="..\JLDisplayNative\JLDisplayNative.vcxproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+      <UndefineProperties>TargetFramework;RuntimeIdentifier;SelfContained;AppendRuntimeIdentifierToOutputPath;AppendTargetFrameworkToOutputPath;OutputPath</UndefineProperties>
+      <SetPlatform>Platform=x64</SetPlatform>
+      <AdditionalProperties>Platform=x64</AdditionalProperties>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="app.ico"/>
+  </ItemGroup>
+
+</Project>

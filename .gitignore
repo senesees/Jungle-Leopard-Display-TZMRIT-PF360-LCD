@@ -1,0 +1,56 @@
+# Build output
+#
+# Patterns are anchored rather than global on purpose. A bare `x64/` would also
+# match Jungle Leopard Display/third_party/libusb/lib/x64, and gitignore cannot
+# re-include anything under an excluded directory - the vendored libusb binaries
+# would vanish silently.
+
+# Solution-wide output
+/x64/
+/Win32/
+/Release/
+/Debug/
+
+# Per-project output: one path component then the build dir, which never
+# reaches as deep as third_party.
+*/x64/
+*/Win32/
+*/Release/
+*/Debug/
+
+# Visual Studio's per-project "unique intermediate directory"
+*/Jungle L.*/
+
+# .NET
+*/obj/
+*/bin/
+project.assets.json
+*.nuget.g.props
+*.nuget.g.targets
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.VC.opendb
+
+# Build artefacts that escape the directories above
+*.obj
+*.pdb
+*.ilk
+*.idb
+*.exp
+*.tlog
+*.log
+*.aps
+
+# Claude Code: machine-specific tool permissions, not useful to anyone else
+.claude/settings.local.json
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

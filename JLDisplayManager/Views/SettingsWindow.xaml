@@ -1,0 +1,133 @@
+<Window x:Class="JLDisplayManager.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings" Height="640" Width="470"
+        Background="{StaticResource Bg}"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" ShowInTaskbar="False">
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="0,0,10,0">
+
+                <TextBlock Text="PICTURE" Style="{StaticResource Heading}"/>
+
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Rotation" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox x:Name="RotateBox" Grid.Column="1">
+                        <ComboBoxItem><TextBlock Text="0° — as mounted" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="90° clockwise" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="180° — upside down" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="270° clockwise" Foreground="#1A1207"/></ComboBoxItem>
+                    </ComboBox>
+                </Grid>
+
+                <CheckBox x:Name="StretchBox"
+                          Content="Stretch to fill (ignore the source's aspect ratio)"/>
+                <TextBlock Margin="24,0,0,10" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="Off pads with black to keep the picture's shape."/>
+
+                <Grid Margin="0,4,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="46"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Frame rate" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <Slider x:Name="FpsSlider" Grid.Column="1" Minimum="1" Maximum="60"
+                            TickFrequency="1" IsSnapToTickEnabled="True"
+                            VerticalAlignment="Center"
+                            ValueChanged="OnFpsChanged"/>
+                    <TextBlock x:Name="FpsValue" Grid.Column="2" TextAlignment="Right"
+                               VerticalAlignment="Center"/>
+                </Grid>
+                <TextBlock Margin="0,-6,0,14" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="The panel refreshes at 30 fps; asking for more mostly wastes CPU."/>
+
+                <TextBlock Text="DECODING" Style="{StaticResource Heading}"/>
+
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Acceleration" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox x:Name="HwaccelBox" Grid.Column="1">
+                        <ComboBoxItem><TextBlock Text="auto" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="none (software)" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="cuda" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="qsv" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="d3d11va" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="dxva2" Foreground="#1A1207"/></ComboBoxItem>
+                    </ComboBox>
+                </Grid>
+                <TextBlock Margin="0,0,0,14" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="Affects decoding only — the JPEG encode always runs on the CPU. Helps most on high-resolution sources."/>
+
+                <TextBlock Text="STARTUP" Style="{StaticResource Heading}"/>
+
+                <CheckBox x:Name="StartWithWindowsBox" Content="Start when I sign in"
+                          Click="OnStartWithWindowsChanged"/>
+                <TextBlock Margin="24,0,0,8" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="Registers a scheduled task, which also restarts the app if it stops unexpectedly."/>
+
+                <CheckBox x:Name="StartMinimisedBox" Content="Start hidden in the notification area"/>
+                <CheckBox x:Name="ResumeBox" Content="Put back what was showing when I last quit"/>
+                <CheckBox x:Name="AutoReconnectBox" Content="Reconnect automatically when the display returns"/>
+                <CheckBox x:Name="BlankOnExitBox" Content="Blank the panel on exit"/>
+                <TextBlock Margin="24,0,0,14" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="Off leaves the last frame frozen on the glass after the app closes."/>
+
+                <TextBlock Text="DEVICE" Style="{StaticResource Heading}"/>
+
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Serial port" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <TextBox x:Name="PortBox" Grid.Column="1"
+                             ToolTip="Leave empty to find the display by its hardware ID."/>
+                </Grid>
+
+                <TextBlock x:Name="DeviceInfoText" TextWrapping="Wrap" FontSize="11"
+                           Foreground="{StaticResource TextDim}" Margin="0,0,0,10"/>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                    <Button Content="Release device" Style="{StaticResource Btn}"
+                            Click="OnReleaseDevice"
+                            ToolTip="Hand the port back so the command-line tool can use it"/>
+                    <Button Content="Open data folder" Style="{StaticResource Btn}"
+                            Margin="8,0,0,0" Click="OnOpenFolder"/>
+                </StackPanel>
+
+                <TextBlock x:Name="FfmpegText" TextWrapping="Wrap" FontSize="11"
+                           Foreground="{StaticResource TextDim}"/>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,14,0,0">
+            <Button Content="Close" Style="{StaticResource BtnPrimary}" Click="OnClose"/>
+        </StackPanel>
+    </Grid>
+</Window>

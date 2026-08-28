@@ -299,9 +299,6 @@ docs/                 screenshots
 
 ### Known rough edges
 
-- `Jungle Leopard Display/third_party/libusb/` is vendored but **referenced by
-  nothing** — the client talks to the panel as a serial port, not over raw USB.
-  Safe to delete.
 - The solution maps **`Debug|x64` to `Release|x64`** for every project. That's
   inherited from the original `.sln`; the new projects mirror it so CRT settings
   match and linking works. It does mean "Debug" builds optimised code.

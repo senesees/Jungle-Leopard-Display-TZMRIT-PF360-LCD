@@ -1,9 +1,10 @@
 # Build output
 #
-# Patterns are anchored rather than global on purpose. A bare `x64/` would also
-# match Jungle Leopard Display/third_party/libusb/lib/x64, and gitignore cannot
-# re-include anything under an excluded directory - the vendored libusb binaries
-# would vanish silently.
+# Patterns are anchored rather than global: they name the solution-wide and
+# per-project output directories explicitly, so a vendored dependency that
+# happens to ship an x64/ or Release/ directory of its own is never swept up.
+# gitignore cannot re-include anything under an excluded directory, so a bare
+# `x64/` would make such files vanish silently.
 
 # Solution-wide output
 /x64/
@@ -11,8 +12,8 @@
 /Release/
 /Debug/
 
-# Per-project output: one path component then the build dir, which never
-# reaches as deep as third_party.
+# Per-project output: one path component then the build dir, so nothing nested
+# deeper than a project directory is matched.
 */x64/
 */Win32/
 */Release/

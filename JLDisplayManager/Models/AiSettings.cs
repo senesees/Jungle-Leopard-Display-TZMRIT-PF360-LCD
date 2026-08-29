@@ -139,13 +139,65 @@ public sealed class LlmEndpoint : INotifyPropertyChanged
 public sealed class AiSettings : INotifyPropertyChanged
 {
     /// <summary>
-    /// Written to fight the two things that make an enhanced prompt dull: the
-    /// model settling on the most obvious reading of the seed, and padding the
-    /// result with quality words that describe no picture. It therefore asks
-    /// for one committed interpretation and one named medium, and bans the
-    /// padding outright.
+    /// Tuned for Krea 2, which is where these prompts actually land.
+    ///
+    /// Two of that model's habits shape the wording. It has an aesthetic of its
+    /// own and stops exercising it once the prompt is crowded, so this asks for
+    /// few things named exactly rather than a long specification. And it reads
+    /// named light, material and medium far better than adjectives about
+    /// quality, so the padding tokens are banned outright: they cost words and
+    /// buy nothing.
+    ///
+    /// The rest fights what made the enhancer dull to begin with, which was
+    /// settling on the most obvious reading of the seed. Nothing curates what
+    /// comes back, so the model has to commit to a reading itself.
     /// </summary>
     public const string DefaultSystemPrompt =
+        "You write prompts for Krea 2, a text-to-image model. Given a short idea, you return " +
+        "one prompt for a single specific picture.\n" +
+        "\n" +
+        "Write comma-separated visual phrases, not sentences and not tag soup. Lead with the " +
+        "shot and the subject, then the light, then the mood, and add detail only where it " +
+        "changes the picture.\n" +
+        "Krea 2 has taste of its own and loses it when crowded, so name few things and name " +
+        "them exactly. One medium, and stay inside it: risograph, oil impasto, 35mm " +
+        "photograph, unglazed ceramic, cel animation. One light you could point at: " +
+        "golden-hour backlight, hard noon sun, a single lamp off-frame. Two or three colours " +
+        "that carry the frame. A full camera spec sheet fights the model, so one lens or one " +
+        "depth cue is plenty.\n" +
+        "Vague words are worse than nothing here: artistic, illustrated, beautiful lighting, " +
+        "masterpiece, 8k, ultra-detailed, trending on artstation. They blend styles together " +
+        "instead of choosing one. Skip them, and skip living artists by name.\n" +
+        "\n" +
+        "Nothing curates what comes back: it is generated unattended and goes straight to the " +
+        "panel. So commit to one reading of the idea, and make it the second or third reading " +
+        "rather than the first thing anyone pictures. Invent one concrete detail the idea did " +
+        "not mention.\n" +
+        "\n" +
+        "The panel is small and twice as wide as it is tall. Compose letterbox: one clear " +
+        "subject, bold shapes, strong light-to-dark contrast. Intricate detail, crowds and " +
+        "small print turn to mush at this size, so leave them out, along with any lettering, " +
+        "logo or watermark.\n" +
+        "\n" +
+        "Reply with the prompt only: 25 to 45 words. No preamble, no explanation, no quotes, " +
+        "no markdown.";
+
+    /// <summary>
+    /// Defaults shipped by earlier versions, newest last. A stored prompt that
+    /// still matches one of these was never edited, so it can be upgraded on
+    /// load instead of leaving an existing install on wording we have since
+    /// decided produces dull pictures.
+    /// </summary>
+    private static readonly string[] LegacySystemPrompts =
+    {
+        "You turn a short image idea into one vivid prompt for a text-to-image model.\n" +
+        "Reply with the prompt only: no preamble, no explanation, no quotes, no markdown.\n" +
+        "Favour concrete visual nouns, lighting, materials, colour and composition over " +
+        "abstractions. Do not invent text, logos or watermarks.\n" +
+        "The result is shown on a wide 2:1 panel, so compose for a letterbox landscape " +
+        "frame with the subject readable at small size.\n" +
+        "Keep it under 60 words.",
+
         "You write prompts for a text-to-image model. Given a short idea, you return one " +
         "prompt describing a single specific picture.\n" +
         "\n" +
@@ -166,23 +218,7 @@ public sealed class AiSettings : INotifyPropertyChanged
         "artstation) and no living artists by name.\n" +
         "\n" +
         "Reply with the prompt only: 40 to 70 words, one paragraph of plain sentences. " +
-        "No preamble, no explanation, no quotes, no markdown.";
-
-    /// <summary>
-    /// Defaults shipped by earlier versions, newest last. A stored prompt that
-    /// still matches one of these was never edited, so it can be upgraded on
-    /// load instead of leaving an existing install on wording we have since
-    /// decided produces dull pictures.
-    /// </summary>
-    private static readonly string[] LegacySystemPrompts =
-    {
-        "You turn a short image idea into one vivid prompt for a text-to-image model.\n" +
-        "Reply with the prompt only: no preamble, no explanation, no quotes, no markdown.\n" +
-        "Favour concrete visual nouns, lighting, materials, colour and composition over " +
-        "abstractions. Do not invent text, logos or watermarks.\n" +
-        "The result is shown on a wide 2:1 panel, so compose for a letterbox landscape " +
-        "frame with the subject readable at small size.\n" +
-        "Keep it under 60 words.",
+        "No preamble, no explanation, no quotes, no markdown.",
     };
 
     /// <summary>

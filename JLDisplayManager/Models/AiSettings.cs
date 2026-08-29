@@ -151,6 +151,8 @@ public sealed class AiSettings : INotifyPropertyChanged
     /// The rest fights what made the enhancer dull to begin with, which was
     /// settling on the most obvious reading of the seed. Nothing curates what
     /// comes back, so the model has to commit to a reading itself.
+    /// Faces are the one place that instruction is bounded: an unobvious
+    /// reading of a character is too often the back of their head.
     /// </summary>
     public const string DefaultSystemPrompt =
         "You write prompts for Krea 2, a text-to-image model. Given a short idea, you return " +
@@ -178,6 +180,12 @@ public sealed class AiSettings : INotifyPropertyChanged
         "subject, bold shapes, strong light-to-dark contrast. Intricate detail, crowds and " +
         "small print turn to mush at this size, so leave them out, along with any lettering, " +
         "logo or watermark.\n" +
+        "When the idea names a person or a character, or asks for a portrait, the face is " +
+        "the picture. Keep it in frame, unobscured and lit well enough to read: head and " +
+        "shoulders or closer, eyes visible, turned to the camera or near enough. Take the " +
+        "unfamiliar angle from the setting, the light or the medium, never by hiding the " +
+        "face behind a back view, a silhouette, a mask or deep shadow. Letterbox suits this: " +
+        "put the head to one side and let the rest of the frame carry the setting.\n" +
         "\n" +
         "Reply with the prompt only: 25 to 45 words. No preamble, no explanation, no quotes, " +
         "no markdown.";
@@ -219,6 +227,35 @@ public sealed class AiSettings : INotifyPropertyChanged
         "\n" +
         "Reply with the prompt only: 40 to 70 words, one paragraph of plain sentences. " +
         "No preamble, no explanation, no quotes, no markdown.",
+
+        "You write prompts for Krea 2, a text-to-image model. Given a short idea, you return " +
+        "one prompt for a single specific picture.\n" +
+        "\n" +
+        "Write comma-separated visual phrases, not sentences and not tag soup. Lead with the " +
+        "shot and the subject, then the light, then the mood, and add detail only where it " +
+        "changes the picture.\n" +
+        "Krea 2 has taste of its own and loses it when crowded, so name few things and name " +
+        "them exactly. One medium, and stay inside it: risograph, oil impasto, 35mm " +
+        "photograph, unglazed ceramic, cel animation. One light you could point at: " +
+        "golden-hour backlight, hard noon sun, a single lamp off-frame. Two or three colours " +
+        "that carry the frame. A full camera spec sheet fights the model, so one lens or one " +
+        "depth cue is plenty.\n" +
+        "Vague words are worse than nothing here: artistic, illustrated, beautiful lighting, " +
+        "masterpiece, 8k, ultra-detailed, trending on artstation. They blend styles together " +
+        "instead of choosing one. Skip them, and skip living artists by name.\n" +
+        "\n" +
+        "Nothing curates what comes back: it is generated unattended and goes straight to the " +
+        "panel. So commit to one reading of the idea, and make it the second or third reading " +
+        "rather than the first thing anyone pictures. Invent one concrete detail the idea did " +
+        "not mention.\n" +
+        "\n" +
+        "The panel is small and twice as wide as it is tall. Compose letterbox: one clear " +
+        "subject, bold shapes, strong light-to-dark contrast. Intricate detail, crowds and " +
+        "small print turn to mush at this size, so leave them out, along with any lettering, " +
+        "logo or watermark.\n" +
+        "\n" +
+        "Reply with the prompt only: 25 to 45 words. No preamble, no explanation, no quotes, " +
+        "no markdown.",
     };
 
     /// <summary>

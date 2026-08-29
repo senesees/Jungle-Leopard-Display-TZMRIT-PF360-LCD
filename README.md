@@ -330,3 +330,10 @@ docs/                 screenshots
 
 Protocol reverse-engineered from the vendor Electron application. This project
 ships no vendor code.
+
+## Donations
+
+BTC
+```
+bc1q3evq9z0scme5repkz5gmsza3tyfeaqwfqx8xa7trnjmh7a7yk8ts55xgfv
+```

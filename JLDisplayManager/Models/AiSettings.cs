@@ -138,14 +138,69 @@ public sealed class LlmEndpoint : INotifyPropertyChanged
 /// </summary>
 public sealed class AiSettings : INotifyPropertyChanged
 {
+    /// <summary>
+    /// Written to fight the two things that make an enhanced prompt dull: the
+    /// model settling on the most obvious reading of the seed, and padding the
+    /// result with quality words that describe no picture. It therefore asks
+    /// for one committed interpretation and one named medium, and bans the
+    /// padding outright.
+    /// </summary>
     public const string DefaultSystemPrompt =
+        "You write prompts for a text-to-image model. Given a short idea, you return one " +
+        "prompt describing a single specific picture.\n" +
+        "\n" +
+        "Commit to one interpretation and make it particular. The obvious reading is the one " +
+        "the image model already defaults to, so take a later one: an odd vantage point, an " +
+        "unexpected moment, an extreme of scale, an hour or a weather nobody pictures first. " +
+        "Invent one concrete detail the idea did not mention.\n" +
+        "Say what the picture is made of and how it is lit. Pick one medium and stay inside " +
+        "it: a photograph on a named film stock or lens, oil on canvas, woodblock, risograph, " +
+        "gouache, technical illustration, 3D render. Name the two or three colours that carry " +
+        "the frame. Describe what is there, never how impressive it is.\n" +
+        "\n" +
+        "The panel is small and twice as wide as it is tall. Compose letterbox: one clear " +
+        "subject, bold shapes, strong light-to-dark contrast. Crowds, fine texture and small " +
+        "print turn to mush at this size, so leave them out, along with any lettering, logo " +
+        "or watermark.\n" +
+        "No quality padding (masterpiece, 8k, ultra-detailed, award-winning, trending on " +
+        "artstation) and no living artists by name.\n" +
+        "\n" +
+        "Reply with the prompt only: 40 to 70 words, one paragraph of plain sentences. " +
+        "No preamble, no explanation, no quotes, no markdown.";
+
+    /// <summary>
+    /// Defaults shipped by earlier versions, newest last. A stored prompt that
+    /// still matches one of these was never edited, so it can be upgraded on
+    /// load instead of leaving an existing install on wording we have since
+    /// decided produces dull pictures.
+    /// </summary>
+    private static readonly string[] LegacySystemPrompts =
+    {
         "You turn a short image idea into one vivid prompt for a text-to-image model.\n" +
         "Reply with the prompt only: no preamble, no explanation, no quotes, no markdown.\n" +
         "Favour concrete visual nouns, lighting, materials, colour and composition over " +
         "abstractions. Do not invent text, logos or watermarks.\n" +
         "The result is shown on a wide 2:1 panel, so compose for a letterbox landscape " +
         "frame with the subject readable at small size.\n" +
-        "Keep it under 60 words.";
+        "Keep it under 60 words.",
+    };
+
+    /// <summary>
+    /// True when this prompt is one the app shipped rather than one the user
+    /// wrote. Line endings are normalised first: the settings box hands back
+    /// CRLF, so a default that has merely been through Save still counts.
+    /// </summary>
+    public static bool IsSupersededSystemPrompt(string? prompt)
+    {
+        string text = (prompt ?? "").Replace("\r\n", "\n").Trim();
+
+        foreach (string shipped in LegacySystemPrompts)
+        {
+            if (string.Equals(text, shipped, StringComparison.Ordinal)) return true;
+        }
+
+        return false;
+    }
 
     // -----------------------------------------------------------------------
     // SwarmUI

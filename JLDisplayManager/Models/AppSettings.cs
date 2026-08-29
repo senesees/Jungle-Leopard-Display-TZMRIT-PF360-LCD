@@ -167,7 +167,17 @@ public static class Storage
 
     public static AppLibrary LoadLibrary() => Load<AppLibrary>(LibraryPath) ?? new AppLibrary();
 
-    public static AiSettings LoadAi() => Load<AiSettings>(AiPath) ?? new AiSettings();
+    public static AiSettings LoadAi()
+    {
+        var ai = Load<AiSettings>(AiPath) ?? new AiSettings();
+
+        // An untouched system prompt from an older version is moved on to the
+        // current default. Anything the user has edited is left as they wrote it.
+        if (AiSettings.IsSupersededSystemPrompt(ai.SystemPrompt))
+            ai.SystemPrompt = AiSettings.DefaultSystemPrompt;
+
+        return ai;
+    }
 
     public static void SaveSettings(AppSettings s) => Save(SettingsPath, s);
 

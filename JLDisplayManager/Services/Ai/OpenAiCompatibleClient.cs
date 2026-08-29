@@ -34,12 +34,9 @@ public sealed class OpenAiCompatibleClient : ILlmClient
 
         if (string.IsNullOrWhiteSpace(endpoint.BaseUrl))
             throw new LlmException("no LLM address is set");
-        if (string.IsNullOrWhiteSpace(endpoint.Model))
-            throw new LlmException("no LLM model is set");
 
         var body = new JsonObject
         {
-            ["model"] = endpoint.Model,
             ["messages"] = new JsonArray
             {
                 new JsonObject { ["role"] = "system", ["content"] = systemPrompt },
@@ -50,6 +47,22 @@ public sealed class OpenAiCompatibleClient : ILlmClient
             ["stream"] = false,
         };
 
+        // Left out entirely when the box is empty. A single-model runner
+        // like llama-server serves whatever it was started with and ignores
+        // this field, so naming a model there is at best noise and at worst
+        // a stale path that says something untrue about what answered.
+        if (!string.IsNullOrWhiteSpace(endpoint.Model)) body["model"] = endpoint.Model.Trim();
+
+        // Two spellings of the same request, because which one an endpoint
+        // understands depends on what it is: llama.cpp and recent OpenAI take
+        // reasoning_effort, while vLLM and SGLang pass chat_template_kwargs
+        // down to the model's own template. Sending both costs a few bytes.
+        if (_ai.DisableThinking)
+        {
+            body["reasoning_effort"] = "none";
+            body["chat_template_kwargs"] = new JsonObject { ["enable_thinking"] = false };
+        }
+
         var response = await PostAsync("chat/completions", body, ct).ConfigureAwait(false);
 
         string? text = response["choices"]?[0]?["message"]?["content"]?.GetValue<string>();
@@ -57,9 +70,23 @@ public sealed class OpenAiCompatibleClient : ILlmClient
         if (string.IsNullOrWhiteSpace(text))
         {
             // A reasoning model that spends its whole budget thinking lands
-            // here with an empty content string, which is worth saying plainly
-            // rather than reporting as a parse failure.
+            // here with empty content. Naming that is the difference between a
+            // one-click fix and a hunt: raising Max tokens does not help, since
+            // a model that thinks past 400 tokens on a one-line task will think
+            // past 4000 too. The reasoning is served in its own field, so its
+            // presence says plainly which failure this is.
             string? reason = response["choices"]?[0]?["finish_reason"]?.GetValue<string>();
+
+            bool thought = response["choices"]?[0]?["message"]?["reasoning_content"] is not null
+                || response["choices"]?[0]?["message"]?["reasoning"] is not null;
+
+            if (thought && !_ai.DisableThinking)
+            {
+                throw new LlmException(
+                    "the model spent its whole token budget thinking and never answered; "
+                    + "tick “Answer without thinking first” under Instructions and limits");
+            }
+
             throw new LlmException(reason == "length"
                 ? "the model hit its token limit before answering; raise Max tokens"
                 : "the model returned an empty response");

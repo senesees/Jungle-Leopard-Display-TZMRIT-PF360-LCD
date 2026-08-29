@@ -239,6 +239,9 @@
                                        Foreground="{StaticResource TextDim}"/>
                             <ComboBox ItemTemplate="{StaticResource ComboText}" x:Name="LlmModelBox" Grid.Column="1" IsEditable="True"/>
                         </Grid>
+                        <TextBlock Margin="110,0,0,8" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextDim}"
+                                   Text="Leave blank to use whatever the server already has loaded, which is what a single-model runner such as llama-server does anyway."/>
 
                         <Grid Margin="0,0,0,6">
                             <Grid.ColumnDefinitions>
@@ -296,6 +299,12 @@
                                                Foreground="{StaticResource TextDim}"/>
                                     <TextBox x:Name="LlmTimeoutBox" Grid.Column="1"/>
                                 </Grid>
+
+                                <CheckBox x:Name="DisableThinkingBox" Margin="0,0,0,2"
+                                          Content="Answer without thinking first"/>
+                                <TextBlock Margin="24,0,0,8" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextDim}"
+                                           Text="On by default. Writing an image prompt is not a reasoning task, and a local model that thinks first can spend every token it has on a one-line brief and return nothing at all. Untick it for the real OpenAI API, which refuses a request carrying fields it does not know."/>
 
                                 <CheckBox x:Name="RequireEnhancementBox"
                                           Content="Skip generating if enhancement fails"/>
@@ -414,6 +423,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Grid Grid.Row="0">
@@ -443,6 +453,42 @@
                 <TextBlock x:Name="TestOutput" Grid.Row="1" Margin="0,8,0,0" FontSize="11"
                            TextWrapping="Wrap" Foreground="{StaticResource TextDim}"
                            Visibility="Collapsed"/>
+
+                <!-- The model's last answer, in full and selectable. The status
+                     lines above trim, and a prompt is the one thing here you
+                     want to read to the end and copy out. -->
+                <Border x:Name="LastPromptPanel" Grid.Row="2" Margin="0,8,0,0" Padding="8,6"
+                        CornerRadius="4" Background="{StaticResource BgSunken}"
+                        BorderBrush="{StaticResource Line}" BorderThickness="1"
+                        Visibility="Collapsed">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock x:Name="LastPromptHeader" Grid.Column="0" FontSize="11"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       Foreground="{StaticResource TextDim}"/>
+
+                            <Button x:Name="CopyPromptButton" Grid.Column="1" Content="Copy"
+                                    Style="{StaticResource Btn}" Padding="8,2" FontSize="11"
+                                    Click="OnCopyLastPrompt"
+                                    ToolTip="Copy this prompt to the clipboard"/>
+                        </Grid>
+
+                        <TextBox x:Name="LastPromptBox" Grid.Row="1" IsReadOnly="True"
+                                 TextWrapping="Wrap" MaxHeight="86" FontSize="11"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Background="Transparent" BorderThickness="0" Padding="0"/>
+                    </Grid>
+                </Border>
             </Grid>
         </Border>
     </Grid>

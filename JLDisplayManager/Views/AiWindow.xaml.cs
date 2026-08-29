@@ -79,6 +79,7 @@ public partial class AiWindow : Window
         TemperatureBox.Text = _ai.Temperature.ToString(CultureInfo.InvariantCulture);
         MaxTokensBox.Text = _ai.MaxTokens.ToString(CultureInfo.InvariantCulture);
         LlmTimeoutBox.Text = _ai.LlmTimeoutSeconds.ToString(CultureInfo.InvariantCulture);
+        DisableThinkingBox.IsChecked = _ai.DisableThinking;
         RequireEnhancementBox.IsChecked = _ai.RequireEnhancement;
 
         LoadEndpointFields();
@@ -166,6 +167,7 @@ public partial class AiWindow : Window
         _ai.Temperature = ParseDouble(TemperatureBox.Text, _ai.Temperature);
         _ai.MaxTokens = ParseInt(MaxTokensBox.Text, _ai.MaxTokens);
         _ai.LlmTimeoutSeconds = ParseInt(LlmTimeoutBox.Text, _ai.LlmTimeoutSeconds);
+        _ai.DisableThinking = DisableThinkingBox.IsChecked == true;
         _ai.RequireEnhancement = RequireEnhancementBox.IsChecked == true;
 
         var endpoint = _ai.CurrentEndpoint;
@@ -392,8 +394,16 @@ public partial class AiWindow : Window
             var client = _app.Pipeline.Enhancer.GetClient();
             string raw = await client.EnhanceAsync(_ai.SystemPrompt, seed.Trim(), ct);
 
-            ShowTestOutput($"“{seed.Trim()}”  →  {PromptEnhancer.Clean(raw)}");
-            LlmStatus.Text = "the enhancer is working.";
+            // Through the pipeline's record rather than straight to the panel,
+            // so a test and a real generation leave the same trace.
+            _app.Pipeline.NoteEnhanced(new EnhancedPrompt
+            {
+                Seed = seed.Trim(),
+                Text = PromptEnhancer.Clean(raw),
+                WasEnhanced = true,
+            });
+
+            LlmStatus.Text = "the enhancer is working — its answer is at the foot of the window.";
 
             // Populating this after a success means the list reflects an
             // endpoint that actually answered.
@@ -429,7 +439,7 @@ public partial class AiWindow : Window
 
             ShowTestOutput(item is null
                 ? "Generation failed: " + _app.Pipeline.LastError
-                : $"{item.Name}  —  {item.EnhancedPrompt}");
+                : $"Generated {item.Name}.");
         }
         catch (OperationCanceledException)
         {
@@ -518,6 +528,51 @@ public partial class AiWindow : Window
         if (pipeline.Failures > 0) detail += $" · {pipeline.Failures} failed";
         if (pipeline.HasError) detail += " · " + pipeline.LastError;
         PipelineDetail.Text = detail;
+
+        UpdateLastPrompt();
+    }
+
+    /// <summary>
+    /// Shows the model's most recent answer in full. It survives the image
+    /// that failed to follow it and the window being closed and reopened,
+    /// because the pipeline holds it rather than this window.
+    /// </summary>
+    private void UpdateLastPrompt()
+    {
+        var prompt = _app.Pipeline.LastEnhanced;
+
+        if (prompt is null || string.IsNullOrWhiteSpace(prompt.Text))
+        {
+            LastPromptPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        int words = prompt.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+
+        // The word count is worth the room: the system prompt asks for a
+        // length, and this is where you find out whether it was honoured.
+        LastPromptHeader.Text = prompt.WasEnhanced
+            ? $"Last prompt · from “{prompt.Seed}” · {words} words"
+            : $"Not enhanced · “{prompt.Seed}” went to SwarmUI as written"
+              + (string.IsNullOrWhiteSpace(prompt.Note) ? "" : $" · {prompt.Note}");
+
+        LastPromptBox.Text = prompt.Text;
+        LastPromptPanel.Visibility = Visibility.Visible;
+    }
+
+    private void OnCopyLastPrompt(object sender, RoutedEventArgs e)
+    {
+        if (LastPromptBox.Text.Length == 0) return;
+
+        try
+        {
+            Clipboard.SetText(LastPromptBox.Text);
+        }
+        catch (Exception ex)
+        {
+            // Another process can hold the clipboard open; not worth a dialog.
+            Storage.Log($"ai: could not copy the prompt ({ex.Message})");
+        }
     }
 
     // -----------------------------------------------------------------------

@@ -66,6 +66,7 @@ public sealed class AiPipeline : INotifyPropertyChanged, IDisposable
     private int _generated;
     private int _failures;
     private MediaItem? _current;
+    private EnhancedPrompt? _lastEnhanced;
 
     public AiPipeline(AiSettings ai, AppLibrary library, DisplayService display)
     {
@@ -142,6 +143,27 @@ public sealed class AiPipeline : INotifyPropertyChanged, IDisposable
         get => _current;
         private set => Set(ref _current, value);
     }
+
+    /// <summary>
+    /// The last thing the language model produced, kept whether or not the
+    /// image that followed ever arrived.
+    ///
+    /// Recorded before generation starts on purpose: a SwarmUI failure is
+    /// exactly the moment you want to read the prompt that provoked it, and
+    /// the item it would otherwise have been attached to never gets made.
+    /// </summary>
+    public EnhancedPrompt? LastEnhanced
+    {
+        get => _lastEnhanced;
+        private set => Set(ref _lastEnhanced, value);
+    }
+
+    /// <summary>
+    /// Records a prompt produced outside the pipeline, which means the AI
+    /// window's test button: it goes straight at the client, and its answer
+    /// is still the model's most recent output.
+    /// </summary>
+    public void NoteEnhanced(EnhancedPrompt prompt) => LastEnhanced = prompt;
 
     /// <summary>
     /// One line saying what the pipeline is doing, rendered by both the main
@@ -404,7 +426,11 @@ public sealed class AiPipeline : INotifyPropertyChanged, IDisposable
             await OnUiAsync(() => Status = "enhancing the prompt…").ConfigureAwait(false);
             var prompt = await _enhancer.EnhanceAsync(seed, ct).ConfigureAwait(false);
 
-            await OnUiAsync(() => Status = "generating…").ConfigureAwait(false);
+            await OnUiAsync(() =>
+            {
+                LastEnhanced = prompt;
+                Status = "generating…";
+            }).ConfigureAwait(false);
             var image = await _swarm.GenerateAsync(prompt.Text, ct).ConfigureAwait(false);
 
             string path = await WriteAsync(image, ct).ConfigureAwait(false);

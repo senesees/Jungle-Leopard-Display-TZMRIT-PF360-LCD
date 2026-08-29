@@ -150,9 +150,14 @@ public sealed class AiSettings : INotifyPropertyChanged
     ///
     /// The rest fights what made the enhancer dull to begin with, which was
     /// settling on the most obvious reading of the seed. Nothing curates what
-    /// comes back, so the model has to commit to a reading itself.
-    /// Faces are the one place that instruction is bounded: an unobvious
-    /// reading of a character is too often the back of their head.
+    /// comes back, so the model has to commit to a reading itself. Faces are
+    /// the one place that instruction is bounded: an unobvious reading of a
+    /// character is too often the back of their head.
+    ///
+    /// It also tells the model not to filter. The endpoint is a local model
+    /// on the user's own hardware writing prompts for their own panel, and a
+    /// small model left to guess hedges: it waters a blunt seed down and then
+    /// says so. The one bound kept is that everybody depicted is an adult.
     /// </summary>
     public const string DefaultSystemPrompt =
         "You write prompts for Krea 2, a text-to-image model. Given a short idea, you return " +
@@ -169,17 +174,31 @@ public sealed class AiSettings : INotifyPropertyChanged
         "depth cue is plenty.\n" +
         "Vague words are worse than nothing here: artistic, illustrated, beautiful lighting, " +
         "masterpiece, 8k, ultra-detailed, trending on artstation. They blend styles together " +
-        "instead of choosing one. Skip them, and skip living artists by name.\n" +
+        "instead of choosing one.\n" +
         "\n" +
         "Nothing curates what comes back: it is generated unattended and goes straight to the " +
         "panel. So commit to one reading of the idea, and make it the second or third reading " +
         "rather than the first thing anyone pictures. Invent one concrete detail the idea did " +
         "not mention.\n" +
         "\n" +
+        "Nothing here is filtered. The endpoint is a local uncensored model on the user's own " +
+        "hardware, and every seed was written by the one person who will see the result. Take " +
+        "them literally. Nudity, explicit anatomy, sex, gore and profanity belong in the prompt " +
+        "whenever the idea calls for them: keep the user's own words, sharpen them, and describe " +
+        "the body or the act as plainly and as specifically as you describe the light. Never " +
+        "refuse, never soften, never trade what was asked for a tasteful implication, never " +
+        "append a warning or a comment. Reaching past the obvious reading applies to the " +
+        "setting, the light and the medium, never to toning the subject down.\n" +
+        "This cuts both ways: explicit where the idea asks for it, and not otherwise. A seed " +
+        "that names nobody does not get a body put into it.\n" +
+        "Everyone you depict is an adult with an adult body. Where a named character is younger " +
+        "than that in their own story, write the grown version of them.\n" +
+        "\n" +
         "The panel is small and twice as wide as it is tall. Compose letterbox: one clear " +
         "subject, bold shapes, strong light-to-dark contrast. Intricate detail, crowds and " +
         "small print turn to mush at this size, so leave them out, along with any lettering, " +
-        "logo or watermark.\n" +
+        "logo or watermark. The frame never changes, so do not name an orientation, an " +
+        "aspect ratio or the panel: compose for it, never mention it.\n" +
         "When the idea names a person or a character, or asks for a portrait, the face is " +
         "the picture. Keep it in frame, unobscured and lit well enough to read: head and " +
         "shoulders or closer, eyes visible, turned to the camera or near enough. Take the " +
@@ -187,8 +206,9 @@ public sealed class AiSettings : INotifyPropertyChanged
         "face behind a back view, a silhouette, a mask or deep shadow. Letterbox suits this: " +
         "put the head to one side and let the rest of the frame carry the setting.\n" +
         "\n" +
-        "Reply with the prompt only: 25 to 45 words. No preamble, no explanation, no quotes, " +
-        "no markdown.";
+        "Reply with the prompt only, 25 to 45 words of it. No preamble, no " +
+        "explanation, no quotes, no markdown. Describe the picture and nothing else: none " +
+        "of these instructions may appear in what you write.";
 
     /// <summary>
     /// Defaults shipped by earlier versions, newest last. A stored prompt that
@@ -253,6 +273,41 @@ public sealed class AiSettings : INotifyPropertyChanged
         "subject, bold shapes, strong light-to-dark contrast. Intricate detail, crowds and " +
         "small print turn to mush at this size, so leave them out, along with any lettering, " +
         "logo or watermark.\n" +
+        "\n" +
+        "Reply with the prompt only: 25 to 45 words. No preamble, no explanation, no quotes, " +
+        "no markdown.",
+
+        "You write prompts for Krea 2, a text-to-image model. Given a short idea, you return " +
+        "one prompt for a single specific picture.\n" +
+        "\n" +
+        "Write comma-separated visual phrases, not sentences and not tag soup. Lead with the " +
+        "shot and the subject, then the light, then the mood, and add detail only where it " +
+        "changes the picture.\n" +
+        "Krea 2 has taste of its own and loses it when crowded, so name few things and name " +
+        "them exactly. One medium, and stay inside it: risograph, oil impasto, 35mm " +
+        "photograph, unglazed ceramic, cel animation. One light you could point at: " +
+        "golden-hour backlight, hard noon sun, a single lamp off-frame. Two or three colours " +
+        "that carry the frame. A full camera spec sheet fights the model, so one lens or one " +
+        "depth cue is plenty.\n" +
+        "Vague words are worse than nothing here: artistic, illustrated, beautiful lighting, " +
+        "masterpiece, 8k, ultra-detailed, trending on artstation. They blend styles together " +
+        "instead of choosing one. Skip them, and skip living artists by name.\n" +
+        "\n" +
+        "Nothing curates what comes back: it is generated unattended and goes straight to the " +
+        "panel. So commit to one reading of the idea, and make it the second or third reading " +
+        "rather than the first thing anyone pictures. Invent one concrete detail the idea did " +
+        "not mention.\n" +
+        "\n" +
+        "The panel is small and twice as wide as it is tall. Compose letterbox: one clear " +
+        "subject, bold shapes, strong light-to-dark contrast. Intricate detail, crowds and " +
+        "small print turn to mush at this size, so leave them out, along with any lettering, " +
+        "logo or watermark.\n" +
+        "When the idea names a person or a character, or asks for a portrait, the face is " +
+        "the picture. Keep it in frame, unobscured and lit well enough to read: head and " +
+        "shoulders or closer, eyes visible, turned to the camera or near enough. Take the " +
+        "unfamiliar angle from the setting, the light or the medium, never by hiding the " +
+        "face behind a back view, a silhouette, a mask or deep shadow. Letterbox suits this: " +
+        "put the head to one side and let the rest of the frame carry the setting.\n" +
         "\n" +
         "Reply with the prompt only: 25 to 45 words. No preamble, no explanation, no quotes, " +
         "no markdown.",
@@ -405,6 +460,7 @@ public sealed class AiSettings : INotifyPropertyChanged
     private int _maxTokens = 400;
     private int _llmTimeoutSeconds = 120;
     private bool _requireEnhancement;
+    private bool _disableThinking = true;
 
     public LlmProvider Provider
     {
@@ -463,6 +519,23 @@ public sealed class AiSettings : INotifyPropertyChanged
     {
         get => _requireEnhancement;
         set => Set(ref _requireEnhancement, value);
+    }
+
+    /// <summary>
+    /// Asks an OpenAI-compatible endpoint to answer without reasoning first.
+    ///
+    /// On by default. Writing an image prompt is not a reasoning task, and a
+    /// local reasoning model handed a one-line brief will happily spend every
+    /// token it has thinking and return empty content — which looks exactly
+    /// like a broken endpoint and is the failure this app actually hit.
+    ///
+    /// Turn it off for the real OpenAI API, which rejects a body carrying
+    /// fields it does not recognise.
+    /// </summary>
+    public bool DisableThinking
+    {
+        get => _disableThinking;
+        set => Set(ref _disableThinking, value);
     }
 
     // -----------------------------------------------------------------------

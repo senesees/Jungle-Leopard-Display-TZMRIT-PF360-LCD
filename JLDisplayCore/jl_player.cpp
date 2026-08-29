@@ -46,6 +46,7 @@ namespace jl {
         DWORD nextFrameAt = lastKeepAlive;
         size_t sent = 0, dropped = 0, passes = 0;
         bool ok = true;
+        bool formatChecked = false;
 
         // Loop at the application level by restarting ffmpeg. -stream_loop proved
         // unreliable here, and this also recovers if ffmpeg dies mid-playback.
@@ -59,6 +60,20 @@ namespace jl {
             std::vector<uint8_t> acc, frame;
             while (!aborted() && detail::ReadNextJpeg(pipe, acc, frame)) {
                 if (frame.size() > kMaxJpegBytes) { ++dropped; continue; }
+
+                // Once per playback, on the first frame that will actually be
+                // sent. The panel only decodes baseline 4:2:0, and a stream that
+                // is not arrives as a mangled picture rather than as an error —
+                // which is how GIF playback stayed broken: ffmpeg picks the
+                // encoder format from the input, and a GIF decodes to bgra, so
+                // mjpeg chose 4:4:4. The encoder is pinned now, so this should
+                // never fire; if it does, that pin has been lost.
+                if (!formatChecked) {
+                    formatChecked = true;
+                    if (!detail::JpegIsBaseline420(frame))
+                        Log(LogLevel::Warn, L"frames are not baseline 4:2:0 - "
+                            L"the panel will draw them wrong");
+                }
 
                 // Pace against the wall clock rather than relying on ffmpeg's -re,
                 // which does not throttle reliably when writing to a pipe.

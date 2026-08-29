@@ -202,6 +202,18 @@ namespace jl {
             else {
                 cl += L" -vf \"" + filter + L",fps=" + std::to_wstring(fps) + L"\"";
             }
+            // Same reason the still path pins it: without this ffmpeg matches the
+            // encoder to whatever the INPUT decoded to. H.264 and friends decode
+            // to yuv420p and land on yuvj420p, which is fine — but a GIF decodes
+            // to bgra, and an RGB input makes mjpeg choose yuvj444p, which the
+            // panel cannot decode and draws as a smeared mess. Anything that is
+            // not natively 4:2:0 hits this: GIF, APNG, WebM with alpha, 4:4:4
+            // ProRes.
+            //
+            // It matters for calibration too, not just playback: a 4:4:4 frame is
+            // substantially larger than the 4:2:0 one that actually gets sent, so
+            // surveying without this measured a file the panel would never see.
+            cl += L" -pix_fmt yuvj420p";
             cl += L" -f image2pipe -vcodec mjpeg -q:v " + std::to_wstring(quality) + L" -";
             return cl;
         }

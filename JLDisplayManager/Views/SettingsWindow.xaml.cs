@@ -45,6 +45,14 @@ public partial class SettingsWindow : Window
 
         StartMinimisedBox.IsChecked = s.StartMinimised;
         ResumeBox.IsChecked = s.ResumeOnStart;
+
+        // The same setting the AI window offers; it lives here as well because
+        // this is where someone looks for what happens at startup.
+        StartAiBox.IsChecked = _app.Ai.StartWithApp;
+        StartAiHint.Text = _app.Ai.Prompts.Count == 0
+            ? "Nothing to generate from yet — add prompts under AI first."
+            : "Takes precedence over putting back what was showing.";
+
         AutoReconnectBox.IsChecked = s.AutoReconnect;
         BlankOnExitBox.IsChecked = s.BlankOnExit;
         PortBox.Text = s.Port;
@@ -162,6 +170,13 @@ public partial class SettingsWindow : Window
         s.Hwaccel = HwaccelValues[Math.Max(0, HwaccelBox.SelectedIndex)];
         s.StartMinimised = StartMinimisedBox.IsChecked == true;
         s.ResumeOnStart = ResumeBox.IsChecked == true;
+
+        if (_app.Ai.StartWithApp != (StartAiBox.IsChecked == true))
+        {
+            _app.Ai.StartWithApp = StartAiBox.IsChecked == true;
+            Storage.SaveAi(_app.Ai);
+        }
+
         s.AutoReconnect = AutoReconnectBox.IsChecked == true;
         s.BlankOnExit = BlankOnExitBox.IsChecked == true;
         s.Port = PortBox.Text.Trim();

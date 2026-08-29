@@ -6,8 +6,8 @@ head of an AIO cooler — from Windows, without the vendor's Electron app.
 Ships two programs over one shared core:
 
 - **Display Manager** — a tray app that holds the panel permanently, with a
-  media library, a playlist, a live preview of what's on the glass, and an
-  optional start-at-logon task.
+  media library, a playlist, an optional AI image pipeline, a live preview of
+  what's on the glass, and an optional start-at-logon task.
 - **`Jungle Leopard Display.exe`** — the original command-line tool, for
   scripting and one-shot use.
 
@@ -93,6 +93,101 @@ host-side (as the vendor app does).
 `Run` key, which buys restart-on-failure and no "stop on battery". The checkbox
 reads the real registered state, so removing the task outside the app is
 reflected honestly.
+
+---
+
+## AI image pipeline
+
+The manager can generate its own wallpaper: you keep a list of short ideas, an
+LLM expands each into a full prompt, [SwarmUI][swarmui] renders it, and the
+result goes on the panel. **AI** on the status bar opens it.
+
+Everything is optional and off until configured — the app is exactly as it was
+if you never open that window.
+
+[swarmui]: https://github.com/mcmonkeyprojects/SwarmUI
+
+```
+prompts ──▶ LLM enhance ──▶ SwarmUI ──▶ generated\  ──▶ library
+                                            │
+                        buffer of ready images
+                                            │
+                            dwell timer ────┴──▶ panel
+```
+
+### What you need
+
+**SwarmUI**, running and reachable — the default install listens on
+`http://localhost:7801`. Press **Test** and the window fills its model, sampler
+and scheduler lists from that server, so you pick from what is actually
+installed rather than from a guess.
+
+**An LLM**, optionally. Two providers:
+
+| Provider | For |
+|---|---|
+| **OpenAI-compatible** | Ollama, LM Studio, llama.cpp, OpenRouter, OpenAI — anything at `/v1/chat/completions`. Works offline. |
+| **Anthropic** | Claude, via the Messages API. Needs a key. |
+
+Set the provider to **None** to send your prompts to the image model as written.
+Each provider remembers its own address, model and key, so switching between a
+local model and a hosted one to compare results doesn't make you retype
+anything.
+
+### Two clocks
+
+Generation on a home GPU takes anywhere from ten seconds to several minutes, so
+generating and displaying run independently:
+
+- **Keep ready ahead** — how many finished images to hold in reserve. A worker
+  tops the buffer up in the background.
+- **Show each for** — how long an image holds the panel.
+- **Generate no more than** — a floor on time between generations, so a fast
+  backend doesn't fill the disk in a minute. `0` generates as fast as the buffer
+  empties.
+
+The panel is never waiting on the backend: it rotates through what is already
+finished. If the buffer does run dry, the current image simply stays up.
+
+### Failure is not fatal
+
+The pipeline is meant to be left running for days, so nothing in it stops the
+slideshow permanently:
+
+- A failed enhancement **falls back to the prompt as written** and logs it — a
+  dead LLM costs picture quality, not the whole rotation. Tick *Skip generating
+  if enhancement fails* to prefer stopping instead.
+- A failed generation backs off, doubling from 15 s to a 5-minute cap, so an
+  unreachable server is a quiet line in the log rather than a request storm.
+- An expired SwarmUI session — which every restart of SwarmUI causes — is
+  renewed once and the request retried.
+- A disconnected panel picks its image back up when the device returns.
+
+Each leg has its own **Test** button, so a failure isolates to one hop rather
+than needing to be guessed at.
+
+### Where the images go
+
+Generated images land in `%LOCALAPPDATA%\JungleLeopardDisplay\generated\` and
+appear under **GENERATED**, the second tab above the media grid, with the prompt
+as the tooltip. They arrive on their own schedule and in bulk, so they get their
+own tab rather than burying the hand-picked library — but they are ordinary
+items otherwise, and can be shown, added to a playlist and pinned like anything
+else.
+
+**Keep at most** bounds how many are kept; past that the oldest go, file and
+all. **Pin** exempts one — pinned images are never pruned, and neither is
+whatever is currently on the panel or waiting in the buffer. **Remove** on the
+GENERATED tab deletes the file as well, since nothing else would ever list it
+again.
+
+### A note on keys
+
+API keys are encrypted with **DPAPI**, scoped to your Windows account, and
+stored as base64 in `ai.json`. A copied `ai.json` is useless on another machine
+or under another account. That is the whole guarantee: it stops a key
+travelling, not someone already running as you. A key is never displayed once
+saved — leave the box blank to keep it, type in it to replace it.
 
 ---
 
@@ -298,6 +393,19 @@ without a keepalive. If you're driving it yourself, keep sending `0x11`.
 over 80 KB are skipped; force a lower quality with `--quality 12` or
 `--recalibrate`.
 
+**"cannot reach SwarmUI"** — SwarmUI isn't running, or is on another port.
+Check the address in the AI window and press **Test**; a working server reports
+its version and model count.
+
+**AI images generate but never appear** — the playlist and the AI slideshow both
+drive the one panel, and starting either stops the other. **Start** in the AI
+window is what hands the panel over.
+
+**Enhanced prompts look like chat** — the enhancer strips code fences, quotes and
+lead-in lines, but a model that ignores the system prompt entirely will still
+produce prose. Lower the temperature, or reword the system prompt under
+*Instructions and limits*.
+
 **Build says `pwsh.exe is not recognized`** — that's vcpkg's `applocal.ps1`
 integration trying PowerShell 7 and falling back to `powershell.exe`. Harmless;
 install pwsh to quiet it.
@@ -310,6 +418,7 @@ install pwsh to quiet it.
 JLDisplayCore/        protocol, device I/O, ffmpeg, calibration cache
 JLDisplayNative/      flat C API over the core, for P/Invoke
 JLDisplayManager/     WPF tray app (net9.0-windows, x64)
+  Services/Ai/        SwarmUI client, LLM clients, prompt enhancer, pipeline
 Jungle Leopard Display/   the CLI
 docs/                 screenshots
 ```
@@ -323,6 +432,12 @@ docs/                 screenshots
   playback, but have no UI yet — only dwell time is editable per item.
 - x64 only. The `Win32` solution configurations build the native projects but
   not the manager.
+- The Anthropic client is raw HTTP rather than the official SDK, to keep the
+  portable drop free of third-party assemblies. It covers one POST to
+  `/v1/messages`; anything more — tools, streaming — would be worth the
+  dependency instead.
+- The AI pipeline generates one image at a time. SwarmUI will happily batch, and
+  a backend with the VRAM for it is left idle between requests.
 
 ---
 

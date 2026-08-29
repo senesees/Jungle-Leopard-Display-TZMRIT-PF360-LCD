@@ -28,9 +28,20 @@ public partial class MainWindow : Window
     /// </summary>
     public ObservableCollection<MediaItem> LibraryItems { get; } = new();
 
+    /// <summary>
+    /// What the AI pipeline made. Kept in its own view rather than its own
+    /// stored list: the playlist holds ids into Library.Items and retention
+    /// walks the same list, so one collection on disk and two views of it is
+    /// far less to keep straight than two of each.
+    /// </summary>
+    public ObservableCollection<MediaItem> GeneratedItems { get; } = new();
+
     public ObservableCollection<MediaItem> PlaylistItems { get; } = new();
 
     private bool _suppressPlaylistSync;
+
+    /// <summary>Which of the two the grid is currently showing.</summary>
+    private bool _showingGenerated;
 
     public MainWindow()
     {
@@ -39,7 +50,8 @@ public partial class MainWindow : Window
         LibraryList.ItemsSource = LibraryItems;
         PlaylistList.ItemsSource = PlaylistItems;
 
-        foreach (var item in _app.Library.Items) LibraryItems.Add(item);
+        foreach (var item in _app.Library.Items)
+            (item.IsGenerated ? GeneratedItems : LibraryItems).Add(item);
         RebuildPlaylistFromModel();
 
         ShuffleBox.IsChecked = _app.Library.Shuffle;
@@ -48,11 +60,19 @@ public partial class MainWindow : Window
         _app.Display.PropertyChanged += OnDisplayChanged;
         _app.Player.PropertyChanged += OnPlayerChanged;
 
+        // The pipeline writes straight into the library model; these keep the
+        // grid in step with it without the grid having to poll.
+        _app.Pipeline.ItemGenerated += OnItemGenerated;
+        _app.Pipeline.ItemPruned += OnItemPruned;
+        _app.Pipeline.PropertyChanged += OnPipelineChanged;
+
         UpdateStatus();
+        UpdateAiStatus();
         UpdateEmptyHints();
+        UpdateSourceTabs();
         UpdatePlaylistHeading();
 
-        _ = LoadThumbnailsAsync(LibraryItems.ToList());
+        _ = LoadThumbnailsAsync(LibraryItems.Concat(GeneratedItems).ToList());
     }
 
     // -----------------------------------------------------------------------
@@ -86,8 +106,70 @@ public partial class MainWindow : Window
 
             default:
                 UpdateStatus();
+                UpdatePanelPrompt();
                 break;
         }
+    }
+
+    private void OnPipelineChanged(object? sender, PropertyChangedEventArgs e) =>
+        UpdateAiStatus();
+
+    /// <summary>
+    /// Mirrors the pipeline into the bar under the main status line. Generation
+    /// takes minutes and is otherwise invisible — without this, starting the
+    /// slideshow looks like nothing happening.
+    /// </summary>
+    private void UpdateAiStatus()
+    {
+        var pipeline = _app.Pipeline;
+
+        AiBar.Visibility = pipeline.HasActivity ? Visibility.Visible : Visibility.Collapsed;
+        if (!pipeline.HasActivity) return;
+
+        AiStatusText.Text = pipeline.Summary;
+
+        AiStatusText.Foreground = pipeline.HasError
+            ? (Brush)FindResource("Danger")
+            : (Brush)FindResource("Text");
+
+        AiDot.Fill = pipeline.HasError ? (Brush)FindResource("Danger")
+            : pipeline.Running ? (Brush)FindResource("Accent")
+            : (Brush)FindResource("AccentDim");
+
+        // The error, while there is one, is more use than the prompt.
+        string? detail = pipeline.HasError ? pipeline.LastError : pipeline.CurrentPrompt;
+        AiPromptText.Text = detail ?? "";
+        AiPromptText.Visibility = string.IsNullOrEmpty(detail)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+        AiToggleButton.Content = pipeline.Running ? "Stop AI" : "Start AI";
+
+        UpdatePanelPrompt();
+    }
+
+    /// <summary>Shows the prompt beside the preview when the panel holds a generated image.</summary>
+    private void UpdatePanelPrompt()
+    {
+        // Whatever is actually on the glass, which is not always the pipeline's
+        // idea of current — Show now puts something else up.
+        var shown = _app.Display.Current;
+
+        string? prompt = shown is { IsGenerated: true } item ? item.EnhancedPrompt : null;
+
+        PanelPromptText.Text = prompt ?? "";
+        PanelPromptText.Visibility = string.IsNullOrEmpty(prompt)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private void OnToggleAi(object sender, RoutedEventArgs e)
+    {
+        if (_app.Pipeline.Running) _app.Pipeline.Stop();
+        else _app.StartAi();
+
+        UpdateAiStatus();
+        _app.SaveAll();
     }
 
     private void OnPlayerChanged(object? sender, PropertyChangedEventArgs e)
@@ -175,8 +257,13 @@ public partial class MainWindow : Window
 
         if (added.Count == 0) return;
 
+        // Dropping files while the generated tab is up would otherwise put them
+        // somewhere the user cannot see.
+        if (_showingGenerated) ShowSource(generated: false);
+
         _app.SaveAll();
         UpdateEmptyHints();
+        UpdateSourceTabs();
         _ = LoadThumbnailsAsync(added);
         _ = PrecalibrateAsync(added.Where(i => i.IsVideo).ToList());
     }
@@ -206,6 +293,65 @@ public partial class MainWindow : Window
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Sources
+    // -----------------------------------------------------------------------
+
+    private void OnShowLibrary(object sender, RoutedEventArgs e) => ShowSource(generated: false);
+
+    private void OnShowGenerated(object sender, RoutedEventArgs e) => ShowSource(generated: true);
+
+    /// <summary>
+    /// Points the grid at one of the two collections and dresses the panel to
+    /// match. One ListBox rather than two stacked or a TabControl: the tiles,
+    /// the selection behaviour and every button below are identical, and the
+    /// system-drawn TabControl chrome would fight this window's palette the way
+    /// the ComboBox popup already does.
+    /// </summary>
+    private void ShowSource(bool generated)
+    {
+        _showingGenerated = generated;
+
+        LibraryList.ItemsSource = generated ? GeneratedItems : LibraryItems;
+        LibraryList.SelectedItem = null;
+
+        LibraryTab.Style = (Style)FindResource(generated ? "Btn" : "BtnPrimary");
+        GeneratedTab.Style = (Style)FindResource(generated ? "BtnPrimary" : "Btn");
+
+        AddFilesButton.Visibility = generated ? Visibility.Collapsed : Visibility.Visible;
+        OpenGeneratedButton.Visibility = generated ? Visibility.Visible : Visibility.Collapsed;
+        PinButton.Visibility = generated ? Visibility.Visible : Visibility.Collapsed;
+
+        UpdateEmptyHints();
+        UpdateSourceTabs();
+    }
+
+    /// <summary>Keeps the counts on the two tab buttons honest.</summary>
+    private void UpdateSourceTabs()
+    {
+        LibraryTab.Content = LibraryItems.Count > 0 ? $"LIBRARY ({LibraryItems.Count})" : "LIBRARY";
+        GeneratedTab.Content = GeneratedItems.Count > 0
+            ? $"GENERATED ({GeneratedItems.Count})"
+            : "GENERATED";
+    }
+
+    private void OnOpenGeneratedFolder(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Storage.EnsureDirectories();
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(Storage.GeneratedDirectory)
+                {
+                    UseShellExecute = true,
+                });
+        }
+        catch (Exception ex)
+        {
+            Storage.Log("could not open the generated folder: " + ex.Message);
+        }
+    }
+
     private void OnLibraryDoubleClick(object sender, MouseButtonEventArgs e) => ShowSelected();
 
     private void OnShowNow(object sender, RoutedEventArgs e) => ShowSelected();
@@ -214,11 +360,10 @@ public partial class MainWindow : Window
     {
         if (LibraryList.SelectedItem is not MediaItem item) return;
 
-        // Showing one thing on demand means the playlist is no longer what is
-        // driving the panel; leaving it running would yank the item away at the
-        // next dwell.
-        _app.Player.Stop();
-        _app.Display.Play(item);
+        // Showing one thing on demand means neither the playlist nor the AI
+        // slideshow is what drives the panel any more; leaving either running
+        // would yank the item away at the next dwell.
+        _app.ShowOne(item);
         _app.SaveAll();
     }
 
@@ -227,20 +372,100 @@ public partial class MainWindow : Window
         var selected = LibraryList.SelectedItems.Cast<MediaItem>().ToList();
         if (selected.Count == 0) return;
 
+        // Removing a generated image is the user throwing it away, so the file
+        // goes too — leaving orphans in the generated folder that nothing lists
+        // would just grow silently.
+        bool deleteFiles = _showingGenerated;
+
         foreach (var item in selected)
         {
             LibraryItems.Remove(item);
+            GeneratedItems.Remove(item);
             _app.Library.Items.Remove(item);
 
             // An item removed from the library cannot stay in the playlist —
             // the playlist holds ids that would no longer resolve.
             _app.Library.Playlist.RemoveAll(id => id == item.Id);
+
+            if (!deleteFiles || !item.IsGenerated) continue;
+
+            try
+            {
+                if (System.IO.File.Exists(item.Path)) System.IO.File.Delete(item.Path);
+            }
+            catch (Exception ex)
+            {
+                // Locked, most likely. The entry is gone either way, which is
+                // what was asked for.
+                Storage.Log($"could not delete {item.Path}: {ex.Message}");
+            }
         }
 
         RebuildPlaylistFromModel();
         _app.Player.Refresh();
         _app.SaveAll();
         UpdateEmptyHints();
+        UpdateSourceTabs();
+    }
+
+    /// <summary>Newly generated: show it at the top, where it will be noticed.</summary>
+    private void OnItemGenerated(object? sender, MediaItem item)
+    {
+        // Newest first: the one just made is the one worth looking at.
+        GeneratedItems.Insert(0, item);
+        UpdateEmptyHints();
+        UpdateSourceTabs();
+    }
+
+    private void OnItemPruned(object? sender, MediaItem item)
+    {
+        GeneratedItems.Remove(item);
+        LibraryItems.Remove(item);
+        PlaylistItems.Remove(item);
+
+        // Generate now works while the playlist is running, so a prune can land
+        // on an item the player has already resolved into its order. Without
+        // this it would reach a file that is no longer there.
+        _app.Player.Refresh();
+
+        UpdateEmptyHints();
+        UpdateSourceTabs();
+    }
+
+    /// <summary>
+    /// Marks generated images as keepers, so retention pruning skips them.
+    /// Only meaningful for generated items; a file the user added themselves is
+    /// never deleted by this app in the first place.
+    /// </summary>
+    private void OnTogglePin(object sender, RoutedEventArgs e)
+    {
+        var selected = LibraryList.SelectedItems.Cast<MediaItem>()
+            .Where(i => i.IsGenerated)
+            .ToList();
+
+        if (selected.Count == 0) return;
+
+        // One click should make the selection agree rather than invert item by
+        // item: if any is unpinned, pin them all.
+        bool pin = selected.Any(i => !i.Pinned);
+        foreach (var item in selected) item.Pinned = pin;
+
+        _app.SaveAll();
+    }
+
+    private void OnAi(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var window = new AiWindow { Owner = this };
+            window.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            Storage.Log("ai window failed: " + ex);
+            MessageBox.Show(this, ex.Message, "AI",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -300,7 +525,7 @@ public partial class MainWindow : Window
         else
         {
             if (PlaylistItems.Count == 0) return;
-            _app.Player.Start();
+            _app.StartPlaylist();
         }
 
         _app.SaveAll();
@@ -356,7 +581,13 @@ public partial class MainWindow : Window
 
     private void UpdateEmptyHints()
     {
-        EmptyHint.Visibility = LibraryItems.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        int count = _showingGenerated ? GeneratedItems.Count : LibraryItems.Count;
+
+        EmptyHint.Text = _showingGenerated
+            ? "Nothing generated yet.\nSet up SwarmUI under AI, then start the slideshow."
+            : "Drop images and videos here,\nor use Add files.";
+
+        EmptyHint.Visibility = count == 0 ? Visibility.Visible : Visibility.Collapsed;
         PlaylistEmptyHint.Visibility =
             PlaylistItems.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -367,8 +598,7 @@ public partial class MainWindow : Window
 
     private void OnStop(object sender, RoutedEventArgs e)
     {
-        _app.Player.Stop();
-        _app.Display.Stop();
+        _app.StopAll();
         _app.SaveAll();
     }
 

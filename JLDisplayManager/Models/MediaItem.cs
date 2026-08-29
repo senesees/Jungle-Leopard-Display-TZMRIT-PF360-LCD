@@ -106,11 +106,51 @@ public sealed class MediaItem : INotifyPropertyChanged
         set => Set(ref _calibration, value);
     }
 
+    // -----------------------------------------------------------------------
+    // Provenance, for items the AI pipeline made
+    //
+    // All defaulted, so a library.json written before any of this existed still
+    // loads: an ordinary added file is simply IsGenerated = false with nulls.
+    // -----------------------------------------------------------------------
+
+    public bool IsGenerated { get; set; }
+
+    /// <summary>The line from the prompt list this came from.</summary>
+    public string? SeedPrompt { get; set; }
+
+    /// <summary>What the LLM turned that into, and what SwarmUI was actually given.</summary>
+    public string? EnhancedPrompt { get; set; }
+
+    public string? GenModel { get; set; }
+
+    public long? GenSeed { get; set; }
+
+    public DateTime? GeneratedAt { get; set; }
+
+    private bool _pinned;
+
+    /// <summary>
+    /// Exempt from retention pruning. The "I want to keep that one" case, which
+    /// is the whole reason generated images go into the library rather than a
+    /// throwaway queue.
+    /// </summary>
+    public bool Pinned
+    {
+        get => _pinned;
+        set => Set(ref _pinned, value);
+    }
+
     [JsonIgnore]
     public bool FileExists => File.Exists(Path);
 
     [JsonIgnore]
-    public string Kind => IsVideo ? "Video" : "Image";
+    public string Kind => IsVideo ? "Video" : IsGenerated ? "Generated" : "Image";
+
+    /// <summary>What to show on hover: the prompt if there is one, else the path.</summary>
+    [JsonIgnore]
+    public string Detail => IsGenerated && !string.IsNullOrWhiteSpace(EnhancedPrompt)
+        ? EnhancedPrompt!
+        : Path;
 
     public static MediaItem FromPath(string path)
     {

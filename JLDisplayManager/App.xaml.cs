@@ -8,6 +8,7 @@ using System.Windows.Forms;
 
 using JLDisplayManager.Models;
 using JLDisplayManager.Services;
+using JLDisplayManager.Services.Ai;
 using JLDisplayManager.Views;
 
 using Application = System.Windows.Application;
@@ -33,10 +34,18 @@ public partial class App : Application
     private NotifyIcon? _tray;
     private MainWindow? _window;
 
+    // Held so the menu can be updated in place rather than rebuilt each time.
+    private ToolStripLabel? _trayPanelStatus;
+    private ToolStripLabel? _trayAiStatus;
+    private ToolStripMenuItem? _trayPlaylistItem;
+    private ToolStripMenuItem? _trayAiItem;
+
     public AppSettings Settings { get; private set; } = new();
     public AppLibrary Library { get; private set; } = new();
+    public AiSettings Ai { get; private set; } = new();
     public DisplayService Display { get; private set; } = null!;
     public PlaylistPlayer Player { get; private set; } = null!;
+    public AiPipeline Pipeline { get; private set; } = null!;
 
     public static new App Current => (App)Application.Current;
 
@@ -90,11 +99,13 @@ public partial class App : Application
         Storage.EnsureDirectories();
         Settings = Storage.LoadSettings();
         Library = Storage.LoadLibrary();
+        Ai = Storage.LoadAi();
 
         try
         {
             Display = new DisplayService(Settings);
             Player = new PlaylistPlayer(Display, Library);
+            Pipeline = new AiPipeline(Ai, Library, Display);
             Display.Start();
         }
         catch (Exception ex)
@@ -118,7 +129,46 @@ public partial class App : Application
         _window = new MainWindow();
         if (!startHidden) _window.Show();
 
-        if (Settings.ResumeOnStart) Resume();
+        if (Ai.StartWithApp) StartAi();
+        else if (Settings.ResumeOnStart) Resume();
+    }
+
+    // -----------------------------------------------------------------------
+    // Panel arbitration
+    //
+    // The playlist and the AI pipeline both drive the one panel, so starting
+    // either has to stop the other. Kept here rather than inside either class:
+    // neither should have to know the other exists.
+    // -----------------------------------------------------------------------
+
+    /// <summary>Starts the AI slideshow, taking the panel from the playlist.</summary>
+    public void StartAi()
+    {
+        Player.Stop();
+        Pipeline.Start();
+    }
+
+    /// <summary>Starts the playlist, taking the panel from the AI slideshow.</summary>
+    public void StartPlaylist(Guid? startAt = null)
+    {
+        Pipeline.Stop();
+        Player.Start(startAt);
+    }
+
+    /// <summary>Stops whatever is driving the panel and shows one item.</summary>
+    public void ShowOne(MediaItem item)
+    {
+        Pipeline.Stop();
+        Player.Stop();
+        Display.Play(item);
+    }
+
+    /// <summary>Stops everything, leaving the panel on its last frame.</summary>
+    public void StopAll()
+    {
+        Pipeline.Stop();
+        Player.Stop();
+        Display.Stop();
     }
 
     /// <summary>Puts back whatever was on the panel when the app last closed.</summary>
@@ -158,12 +208,36 @@ public partial class App : Application
     private void BuildTray()
     {
         var menu = new ContextMenuStrip();
+
+        // Labels rather than disabled items: the point is to be read, and a
+        // greyed-out menu entry reads as broken rather than as information.
+        _trayPanelStatus = new ToolStripLabel
+        {
+            Font = new Font(menu.Font, System.Drawing.FontStyle.Bold),
+        };
+        _trayAiStatus = new ToolStripLabel { Visible = false };
+
+        menu.Items.Add(_trayPanelStatus);
+        menu.Items.Add(_trayAiStatus);
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Open", null, (_, _) => ShowWindow());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Play playlist", null, (_, _) => Player.Start());
-        menu.Items.Add("Stop", null, (_, _) => { Player.Stop(); Display.Stop(); });
+
+        _trayPlaylistItem = new ToolStripMenuItem("Play playlist", null,
+            (_, _) => { if (Player.Running) { Player.Stop(); Display.Stop(); } else StartPlaylist(); });
+
+        _trayAiItem = new ToolStripMenuItem("Start AI slideshow", null,
+            (_, _) => { if (Pipeline.Running) Pipeline.Stop(); else StartAi(); });
+
+        menu.Items.Add(_trayPlaylistItem);
+        menu.Items.Add(_trayAiItem);
+        menu.Items.Add("Stop", null, (_, _) => StopAll());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitApp());
+
+        // Refreshed on open as well as on change: the menu is not visible most
+        // of the time, and this is the moment it has to be right.
+        menu.Opening += (_, _) => UpdateTray();
 
         _tray = new NotifyIcon
         {
@@ -174,18 +248,48 @@ public partial class App : Application
         };
         _tray.DoubleClick += (_, _) => ShowWindow();
 
-        Display.PropertyChanged += (_, _) => UpdateTrayTooltip();
-        UpdateTrayTooltip();
+        Display.PropertyChanged += (_, _) => UpdateTray();
+        Pipeline.PropertyChanged += (_, _) => UpdateTray();
+        Player.PropertyChanged += (_, _) => UpdateTray();
+
+        UpdateTray();
     }
 
-    private void UpdateTrayTooltip()
+    /// <summary>
+    /// Keeps the tray tooltip and menu in step with what is actually happening.
+    /// The tray is the only surface a user sees while the window is hidden,
+    /// which is most of the time.
+    /// </summary>
+    private void UpdateTray()
     {
         if (_tray is null) return;
 
-        // The tray tooltip is capped at 63 characters and silently truncates,
-        // so keep it short rather than letting a long filename eat the status.
-        string text = $"Jungle Leopard — {Display.StateText}";
-        _tray.Text = text.Length <= 63 ? text : text[..60] + "…";
+        string panel = Display.StateText;
+        string ai = Pipeline.Summary;
+
+        // The tooltip is capped at 63 characters and silently truncates, so the
+        // AI line only earns its place there while the pipeline is running.
+        string tip = Pipeline.Running && ai.Length > 0
+            ? $"Jungle Leopard — {ai}"
+            : $"Jungle Leopard — {panel}";
+        _tray.Text = tip.Length <= 63 ? tip : tip[..60] + "…";
+
+        if (_trayPanelStatus is not null) _trayPanelStatus.Text = panel;
+
+        if (_trayAiStatus is not null)
+        {
+            _trayAiStatus.Text = ai;
+            _trayAiStatus.Visible = ai.Length > 0;
+            _trayAiStatus.ForeColor = Pipeline.HasError
+                ? Color.FromArgb(0xE2, 0x60, 0x3C)
+                : System.Drawing.SystemColors.ControlText;
+        }
+
+        if (_trayPlaylistItem is not null)
+            _trayPlaylistItem.Text = Player.Running ? "Stop playlist" : "Play playlist";
+
+        if (_trayAiItem is not null)
+            _trayAiItem.Text = Pipeline.Running ? "Stop AI slideshow" : "Start AI slideshow";
     }
 
     private static Icon LoadIcon()
@@ -218,6 +322,7 @@ public partial class App : Application
     {
         SaveAll();
 
+        Pipeline.Dispose();
         Player.Stop();
         if (Settings.BlankOnExit) Display.Stop();
         Display.Dispose();
@@ -240,6 +345,7 @@ public partial class App : Application
 
         Storage.SaveSettings(Settings);
         Storage.SaveLibrary(Library);
+        Storage.SaveAi(Ai);
     }
 
     protected override void OnExit(ExitEventArgs e)

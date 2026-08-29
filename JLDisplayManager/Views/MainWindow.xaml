@@ -30,11 +30,32 @@
                                 <TextBlock Text="VIDEO" FontSize="9" FontWeight="Bold"
                                            Foreground="{StaticResource Accent}"/>
                             </Border>
+
+                            <!-- Marks what the pipeline made, so a generated
+                                 image is never mistaken for one you added. -->
+                            <Border Background="#B0000000" CornerRadius="3"
+                                    Padding="5,1" Margin="6"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top"
+                                    Visibility="{Binding IsGenerated,
+                                        Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="AI" FontSize="9" FontWeight="Bold"
+                                           Foreground="{StaticResource Accent}"/>
+                            </Border>
+
+                            <!-- A pinned image survives retention pruning. -->
+                            <Border Background="#B0000000" CornerRadius="3"
+                                    Padding="5,1" Margin="6"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                    Visibility="{Binding Pinned,
+                                        Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="PINNED" FontSize="9" FontWeight="Bold"
+                                           Foreground="{StaticResource Accent}"/>
+                            </Border>
                         </Grid>
                     </Border>
 
                     <TextBlock Text="{Binding Name}" Margin="8,6,8,0"
-                               TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}"/>
+                               TextTrimming="CharacterEllipsis" ToolTip="{Binding Detail}"/>
 
                     <TextBlock Margin="8,2,8,6" FontSize="10"
                                Foreground="{StaticResource TextDim}"
@@ -102,25 +123,69 @@
                 CornerRadius="6" Background="{StaticResource BgRaised}"
                 BorderBrush="{StaticResource Line}" BorderThickness="1">
             <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                <Ellipse x:Name="StatusDot" Grid.Column="0" Width="9" Height="9"
-                         VerticalAlignment="Center" Margin="0,0,9,0" Fill="{StaticResource Danger}"/>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusText" Text="Starting…" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="StatusDetail" FontSize="11"
-                               Foreground="{StaticResource TextDim}"
-                               TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
+                    <Ellipse x:Name="StatusDot" Grid.Column="0" Width="9" Height="9"
+                             VerticalAlignment="Center" Margin="0,0,9,0" Fill="{StaticResource Danger}"/>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal">
-                    <Button Content="Settings" Style="{StaticResource Btn}" Click="OnSettings"/>
-                </StackPanel>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="StatusText" Text="Starting…" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="StatusDetail" FontSize="11"
+                                   Foreground="{StaticResource TextDim}"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Content="AI" Style="{StaticResource Btn}" Click="OnAi"
+                                Margin="0,0,8,0"
+                                ToolTip="Generate images automatically and put them on the panel"/>
+                        <Button Content="Settings" Style="{StaticResource Btn}" Click="OnSettings"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- The AI line. Collapsed until the pipeline has done
+                     something, so the bar stays as it was for anyone not using
+                     it. Generation is slow and mostly invisible, so what stage
+                     it is at is the single most useful thing to show. -->
+                <Border x:Name="AiBar" Grid.Row="1" Margin="0,9,0,0" Padding="10,7"
+                        CornerRadius="4" Background="{StaticResource BgSunken}"
+                        BorderBrush="{StaticResource AccentDim}" BorderThickness="1"
+                        Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Ellipse x:Name="AiDot" Grid.Column="0" Width="8" Height="8"
+                                 VerticalAlignment="Center" Margin="0,0,9,0"
+                                 Fill="{StaticResource AccentDim}"/>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock x:Name="AiStatusText" FontSize="12" FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="AiPromptText" FontSize="11" Margin="0,2,0,0"
+                                       Foreground="{StaticResource TextDim}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Visibility="Collapsed"/>
+                        </StackPanel>
+
+                        <Button x:Name="AiToggleButton" Grid.Column="2" Content="Stop AI"
+                                Style="{StaticResource Btn}" Padding="10,4" FontSize="11"
+                                Click="OnToggleAi"/>
+                    </Grid>
+                </Border>
             </Grid>
         </Border>
 
@@ -136,10 +201,26 @@
                 </Grid.RowDefinitions>
 
                 <Grid Grid.Row="0" Margin="0,0,0,10">
-                    <TextBlock Text="LIBRARY" Style="{StaticResource Heading}"
-                               VerticalAlignment="Center" Margin="0"/>
+                    <!-- Two sources, one grid. Generated images arrive on their
+                         own schedule and in bulk, so mixing them into the
+                         hand-picked library buries it. -->
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="LibraryTab" Content="LIBRARY"
+                                Style="{StaticResource BtnPrimary}" Padding="12,5" FontSize="11"
+                                Click="OnShowLibrary"/>
+                        <Button x:Name="GeneratedTab" Content="GENERATED"
+                                Style="{StaticResource Btn}" Margin="6,0,0,0"
+                                Padding="12,5" FontSize="11"
+                                Click="OnShowGenerated"/>
+                    </StackPanel>
+
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Content="Add files…" Style="{StaticResource Btn}" Click="OnAddFiles"/>
+                        <Button x:Name="AddFilesButton" Content="Add files…"
+                                Style="{StaticResource Btn}" Click="OnAddFiles"/>
+                        <Button x:Name="OpenGeneratedButton" Content="Open folder"
+                                Style="{StaticResource Btn}" Click="OnOpenGeneratedFolder"
+                                Visibility="Collapsed"
+                                ToolTip="Show the generated images on disk"/>
                     </StackPanel>
                 </Grid>
 
@@ -191,6 +272,9 @@
                             Margin="8,0,0,0" Click="OnAddToPlaylist"/>
                     <Button Content="Remove" Style="{StaticResource Btn}"
                             Margin="8,0,0,0" Click="OnRemoveFromLibrary"/>
+                    <Button x:Name="PinButton" Content="Pin" Style="{StaticResource Btn}"
+                            Margin="8,0,0,0" Click="OnTogglePin" Visibility="Collapsed"
+                            ToolTip="Keep this image when older ones are cleared out"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -225,6 +309,13 @@
 
                     <TextBlock x:Name="PlaybackStats" Margin="0,8,0,0" FontSize="11"
                                Foreground="{StaticResource TextDim}"/>
+
+                    <!-- What was asked for, when the panel is showing something
+                         the pipeline made. -->
+                    <TextBlock x:Name="PanelPromptText" Margin="0,6,0,0" FontSize="11"
+                               Foreground="{StaticResource TextDim}"
+                               TextWrapping="Wrap" MaxHeight="48"
+                               Visibility="Collapsed"/>
 
                     <Grid Margin="0,10,0,0">
                         <Grid.ColumnDefinitions>

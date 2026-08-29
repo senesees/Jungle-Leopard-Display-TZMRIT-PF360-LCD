@@ -142,8 +142,12 @@ public static class Storage
 
     public static string ThumbnailDirectory { get; } = Path.Combine(Directory, "thumbnails");
 
+    /// <summary>Where the AI pipeline writes what it generates.</summary>
+    public static string GeneratedDirectory { get; } = Path.Combine(Directory, "generated");
+
     private static string SettingsPath => Path.Combine(Directory, "settings.json");
     private static string LibraryPath => Path.Combine(Directory, "library.json");
+    private static string AiPath => Path.Combine(Directory, "ai.json");
     public static string LogPath => Path.Combine(Directory, "manager.log");
 
     private static readonly JsonSerializerOptions Json = new()
@@ -156,15 +160,20 @@ public static class Storage
     {
         System.IO.Directory.CreateDirectory(Directory);
         System.IO.Directory.CreateDirectory(ThumbnailDirectory);
+        System.IO.Directory.CreateDirectory(GeneratedDirectory);
     }
 
     public static AppSettings LoadSettings() => Load<AppSettings>(SettingsPath) ?? new AppSettings();
 
     public static AppLibrary LoadLibrary() => Load<AppLibrary>(LibraryPath) ?? new AppLibrary();
 
+    public static AiSettings LoadAi() => Load<AiSettings>(AiPath) ?? new AiSettings();
+
     public static void SaveSettings(AppSettings s) => Save(SettingsPath, s);
 
     public static void SaveLibrary(AppLibrary l) => Save(LibraryPath, l);
+
+    public static void SaveAi(AiSettings a) => Save(AiPath, a);
 
     private static T? Load<T>(string path) where T : class
     {

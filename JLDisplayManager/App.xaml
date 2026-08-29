@@ -61,6 +61,37 @@
                 </Setter>
             </Style>
 
+            <!-- A borderless glyph button for actions that belong to one row of
+                 a list, where a full bordered button would out-weigh the row it
+                 sits in. Turns red on hover: every use of it so far destroys
+                 something. -->
+            <Style x:Key="IconBtn" TargetType="Button">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="7,2"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="b" CornerRadius="3"
+                                    Background="{TemplateBinding Background}">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  Margin="{TemplateBinding Padding}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="b" Property="Background" Value="#3A211A"/>
+                                    <Setter Property="Foreground" Value="{StaticResource Danger}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <Style x:Key="BtnPrimary" TargetType="Button" BasedOn="{StaticResource Btn}">
                 <Setter Property="Background" Value="{StaticResource Accent}"/>
                 <Setter Property="Foreground" Value="#1A1207"/>
@@ -111,6 +142,20 @@
                 <Setter Property="FontSize" Value="12"/>
                 <Setter Property="Padding" Value="6,4"/>
             </Style>
+
+            <!-- For a ComboBox filled from an ItemsSource of strings. Each item
+                 is rendered through a generated TextBlock, which picks up the
+                 implicit TextBlock style above — near-white, on the popup's
+                 system-drawn light background, which is unreadable. The
+                 ComboBoxItem Foreground does not save it: an explicit setter on
+                 the TextBlock beats an inherited value.
+
+                 The hand-written ComboBoxItems elsewhere set their colour inline
+                 for the same reason; this is that fix for items that have no
+                 markup to put it in. -->
+            <DataTemplate x:Key="ComboText">
+                <TextBlock Text="{Binding}" Foreground="#1A1207"/>
+            </DataTemplate>
 
             <Style TargetType="Slider">
                 <Setter Property="Foreground" Value="{StaticResource Accent}"/>

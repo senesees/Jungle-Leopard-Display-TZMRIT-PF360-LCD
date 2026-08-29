@@ -89,6 +89,11 @@
 
                 <CheckBox x:Name="StartMinimisedBox" Content="Start hidden in the notification area"/>
                 <CheckBox x:Name="ResumeBox" Content="Put back what was showing when I last quit"/>
+
+                <CheckBox x:Name="StartAiBox" Content="Start the AI slideshow"/>
+                <TextBlock x:Name="StartAiHint" Margin="24,0,0,8" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"/>
+
                 <CheckBox x:Name="AutoReconnectBox" Content="Reconnect automatically when the display returns"/>
                 <CheckBox x:Name="BlankOnExitBox" Content="Blank the panel on exit"/>
                 <TextBlock Margin="24,0,0,14" FontSize="11" TextWrapping="Wrap"

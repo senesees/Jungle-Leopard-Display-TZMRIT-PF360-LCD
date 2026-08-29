@@ -1,0 +1,449 @@
+﻿<Window x:Class="JLDisplayManager.Views.AiWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AI image pipeline" Height="760" Width="600" MinHeight="520" MinWidth="560"
+        Background="{StaticResource Bg}"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+
+    <Window.Resources>
+        <!-- One prompt: a tick to include it, the text, and its own way out.
+             The row is the whole control — a bulk "remove empty" pass existed
+             only because there was no way to delete the row you were looking
+             at. -->
+        <DataTemplate x:Key="PromptRow">
+            <Border Margin="0,0,0,4" Padding="7,4" CornerRadius="4"
+                    Background="{StaticResource BgSunken}"
+                    BorderBrush="{StaticResource Line}" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}"
+                              Margin="0,0,8,0" VerticalAlignment="Center"
+                              ToolTip="Include this prompt in the rotation"/>
+
+                    <Grid Grid.Column="1">
+                        <!-- Borderless inside the row's own border, so the row
+                             reads as one field rather than a box in a box. -->
+                        <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="Transparent" BorderThickness="0"
+                                 Padding="0,3" VerticalAlignment="Center"
+                                 TextWrapping="Wrap" AcceptsReturn="False"
+                                 KeyDown="OnPromptKeyDown"/>
+
+                        <!-- Sits behind the box and ignores the mouse, so
+                             clicking the hint lands in the field under it. -->
+                        <TextBlock Text="describe an image…" IsHitTestVisible="False"
+                                   Margin="2,3,0,0" VerticalAlignment="Center"
+                                   Foreground="#6B6154" FontStyle="Italic">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+
+                    <Button Grid.Column="2" Content="✕" Style="{StaticResource IconBtn}"
+                            Click="OnDeletePrompt" VerticalAlignment="Center"
+                            ToolTip="Delete this prompt"/>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="0,0,10,0">
+
+                <!-- ================= SwarmUI ================= -->
+                <TextBlock Text="SWARMUI" Style="{StaticResource Heading}"/>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Address" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <TextBox x:Name="SwarmUrlBox" Grid.Column="1"
+                             ToolTip="Where SwarmUI is listening. The default install uses port 7801."/>
+                    <Button Grid.Column="2" Content="Test" Style="{StaticResource Btn}"
+                            Margin="8,0,0,0" Click="OnTestSwarm"
+                            ToolTip="Connect and list what this server has"/>
+                </Grid>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Model" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox ItemTemplate="{StaticResource ComboText}" x:Name="ModelBox" Grid.Column="1" IsEditable="True"
+                              ToolTip="Press Test to load the list from the server"/>
+                </Grid>
+
+                <TextBlock x:Name="SwarmStatus" TextWrapping="Wrap" FontSize="11"
+                           Foreground="{StaticResource TextDim}" Margin="110,0,0,10"/>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Size" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <TextBox x:Name="WidthBox" Grid.Column="1"/>
+                    <TextBlock Grid.Column="2" Text="×" Margin="6,0" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <TextBox x:Name="HeightBox" Grid.Column="3"/>
+                </Grid>
+                <TextBlock Margin="110,0,0,10" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="The panel is 960×480, so a 2:1 shape fills it without cropping — 960×480 itself works. Rounded to a multiple of 8."/>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Steps / CFG" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <TextBox x:Name="StepsBox" Grid.Column="1"/>
+                    <TextBlock Grid.Column="2" Text="·" Margin="6,0" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <TextBox x:Name="CfgBox" Grid.Column="3"/>
+                </Grid>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Sampler" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox ItemTemplate="{StaticResource ComboText}" x:Name="SamplerBox" Grid.Column="1" IsEditable="True"/>
+                    <TextBlock Grid.Column="2" Text="·" Margin="6,0" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox ItemTemplate="{StaticResource ComboText}" x:Name="SchedulerBox" Grid.Column="3" IsEditable="True"/>
+                </Grid>
+                <TextBlock Margin="110,0,0,10" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="Leave either empty to use the server's own default."/>
+
+                <TextBlock Text="Negative prompt" Foreground="{StaticResource TextDim}" Margin="0,0,0,4"/>
+                <TextBox x:Name="NegativeBox" TextWrapping="Wrap" AcceptsReturn="True"
+                         Height="46" VerticalScrollBarVisibility="Auto" Margin="0,0,0,10"/>
+
+                <Expander Header="Advanced" Foreground="{StaticResource TextDim}" Margin="0,0,0,14">
+                    <StackPanel Margin="0,8,0,0">
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Timeout (s)" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextDim}"/>
+                            <TextBox x:Name="GenTimeoutBox" Grid.Column="1"/>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Account token" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextDim}"/>
+                            <PasswordBox x:Name="SwarmTokenBox" Grid.Column="1"
+                                         Background="{StaticResource BgSunken}"
+                                         Foreground="{StaticResource Text}"
+                                         BorderBrush="{StaticResource Line}" Padding="6,4"
+                                         ToolTip="Only needed if this SwarmUI requires accounts"/>
+                        </Grid>
+
+                        <CheckBox x:Name="DoNotSaveBox"
+                                  Content="Ask SwarmUI not to keep its own copy"/>
+                        <TextBlock Margin="24,0,0,8" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextDim}"
+                                   Text="Off means every image is stored twice — once by SwarmUI, once here."/>
+
+                        <TextBlock Text="Extra parameters (JSON)" Foreground="{StaticResource TextDim}"
+                                   Margin="0,4,0,4"/>
+                        <TextBox x:Name="ExtraParamsBox" TextWrapping="Wrap" AcceptsReturn="True"
+                                 Height="56" VerticalScrollBarVisibility="Auto"
+                                 FontFamily="Consolas"
+                                 ToolTip="Merged into the generate request, for anything not shown above"/>
+                    </StackPanel>
+                </Expander>
+
+                <!-- ================= Enhancer ================= -->
+                <TextBlock Text="PROMPT ENHANCER" Style="{StaticResource Heading}"/>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Provider" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox x:Name="ProviderBox" Grid.Column="1" SelectionChanged="OnProviderChanged">
+                        <ComboBoxItem><TextBlock Text="None — use prompts as written" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="OpenAI-compatible (Ollama, LM Studio, …)" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="Anthropic (Claude)" Foreground="#1A1207"/></ComboBoxItem>
+                    </ComboBox>
+                </Grid>
+
+                <Grid x:Name="LlmPanel">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Address" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextDim}"/>
+                            <TextBox x:Name="LlmUrlBox" Grid.Column="1"/>
+                            <Button Grid.Column="2" Content="Test" Style="{StaticResource Btn}"
+                                    Margin="8,0,0,0" Click="OnTestLlm"
+                                    ToolTip="Enhance the first prompt and show the result"/>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Model" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextDim}"/>
+                            <ComboBox ItemTemplate="{StaticResource ComboText}" x:Name="LlmModelBox" Grid.Column="1" IsEditable="True"/>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="API key" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextDim}"/>
+                            <PasswordBox x:Name="LlmKeyBox" Grid.Column="1"
+                                         Background="{StaticResource BgSunken}"
+                                         Foreground="{StaticResource Text}"
+                                         BorderBrush="{StaticResource Line}" Padding="6,4"/>
+                        </Grid>
+                        <TextBlock x:Name="KeyHint" Margin="110,0,0,8" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextDim}"/>
+
+                        <TextBlock x:Name="LlmStatus" TextWrapping="Wrap" FontSize="11"
+                                   Foreground="{StaticResource TextDim}" Margin="110,0,0,10"/>
+
+                        <Expander Header="Instructions and limits" Foreground="{StaticResource TextDim}"
+                                  Margin="0,0,0,10">
+                            <StackPanel Margin="0,8,0,0">
+                                <TextBlock Text="System prompt" Foreground="{StaticResource TextDim}"
+                                           Margin="0,0,0,4"/>
+                                <TextBox x:Name="SystemPromptBox" TextWrapping="Wrap" AcceptsReturn="True"
+                                         Height="96" VerticalScrollBarVisibility="Auto"
+                                         Margin="0,0,0,6"/>
+                                <Button Content="Restore the default wording" Style="{StaticResource Btn}"
+                                        HorizontalAlignment="Left" Click="OnResetSystemPrompt"
+                                        Margin="0,0,0,8"/>
+
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Temp / tokens" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextDim}"/>
+                                    <TextBox x:Name="TemperatureBox" Grid.Column="1"/>
+                                    <TextBlock Grid.Column="2" Text="·" Margin="6,0" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextDim}"/>
+                                    <TextBox x:Name="MaxTokensBox" Grid.Column="3"/>
+                                </Grid>
+                                <TextBlock x:Name="TemperatureHint" Margin="110,0,0,8" FontSize="11"
+                                           TextWrapping="Wrap" Foreground="{StaticResource TextDim}"/>
+
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Timeout (s)" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextDim}"/>
+                                    <TextBox x:Name="LlmTimeoutBox" Grid.Column="1"/>
+                                </Grid>
+
+                                <CheckBox x:Name="RequireEnhancementBox"
+                                          Content="Skip generating if enhancement fails"/>
+                                <TextBlock Margin="24,0,0,0" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextDim}"
+                                           Text="Off — the default — falls back to the prompt as written, so a dead LLM costs picture quality rather than stopping the slideshow."/>
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </Grid>
+
+                <!-- ================= Prompts ================= -->
+                <TextBlock Text="PROMPTS" Style="{StaticResource Heading}"/>
+                <TextBlock Margin="0,-4,0,8" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="Short ideas, one per line. Each is expanded by the enhancer before it reaches the image model."/>
+
+                <ItemsControl x:Name="PromptList" MinHeight="30"
+                              ItemTemplate="{StaticResource PromptRow}"/>
+
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,4">
+                    <Button Content="Add prompt" Style="{StaticResource Btn}" Click="OnAddPrompt"/>
+                    <TextBlock Margin="10,0,0,0" FontSize="11" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"
+                               Text="Enter adds another · ✕ deletes a row"/>
+                </StackPanel>
+
+                <Grid Margin="0,6,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Order" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox x:Name="OrderBox" Grid.Column="1">
+                        <ComboBoxItem><TextBlock Text="In order, top to bottom" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="Random" Foreground="#1A1207"/></ComboBoxItem>
+                    </ComboBox>
+                </Grid>
+
+                <!-- ================= Timing ================= -->
+                <TextBlock Text="TIMING" Style="{StaticResource Heading}"/>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Show each for (s)" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <TextBox x:Name="DwellBox" Grid.Column="1" TextChanged="OnTimingChanged"/>
+                </Grid>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Generate no more than" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <TextBox x:Name="GenEveryBox" Grid.Column="1"
+                             TextChanged="OnTimingChanged"
+                             ToolTip="Minimum seconds between generations, measured start to start. 0 keeps the buffer topped up as fast as the backend allows."/>
+                </Grid>
+                <TextBlock x:Name="TimingHint" Margin="150,0,0,10" FontSize="11"
+                           TextWrapping="Wrap" Foreground="{StaticResource TextDim}"/>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Keep ready ahead" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <TextBox x:Name="BufferBox" Grid.Column="1"
+                             ToolTip="Images finished and waiting, so the panel never stalls on a slow generation"/>
+                </Grid>
+
+                <CheckBox x:Name="StartWithAppBox" Content="Start the slideshow when the app starts"
+                          Margin="0,4,0,14"/>
+
+                <!-- ================= Retention ================= -->
+                <TextBlock Text="KEEPING IMAGES" Style="{StaticResource Heading}"/>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Keep at most" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <TextBox x:Name="RetentionCountBox" Grid.Column="1"/>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <CheckBox x:Name="PruneByAgeBox" Content="Also delete anything older than"
+                              VerticalAlignment="Center"/>
+                    <TextBox x:Name="RetentionDaysBox" Width="52" Margin="8,0,6,0"
+                             TextAlignment="Center"/>
+                    <TextBlock Text="days" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                </StackPanel>
+
+                <TextBlock Margin="0,4,0,10" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="Pinned images are never deleted, and neither is whatever is on the panel. Pin one with the button under the library."/>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ================= footer ================= -->
+        <Border Grid.Row="1" Margin="0,12,0,0" Padding="12,10" CornerRadius="6"
+                Background="{StaticResource BgRaised}"
+                BorderBrush="{StaticResource Line}" BorderThickness="1">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock x:Name="PipelineStatus" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="PipelineDetail" FontSize="11"
+                                   Foreground="{StaticResource TextDim}"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="GenerateNowButton" Content="Generate now"
+                                Style="{StaticResource Btn}" Click="OnGenerateNow"/>
+                        <Button x:Name="RunButton" Content="Start" Style="{StaticResource BtnPrimary}"
+                                Margin="8,0,0,0" Click="OnToggleRun"/>
+                        <Button Content="Close" Style="{StaticResource Btn}" Margin="8,0,0,0"
+                                Click="OnClose"/>
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock x:Name="TestOutput" Grid.Row="1" Margin="0,8,0,0" FontSize="11"
+                           TextWrapping="Wrap" Foreground="{StaticResource TextDim}"
+                           Visibility="Collapsed"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

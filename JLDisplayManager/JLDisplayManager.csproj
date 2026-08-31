@@ -61,6 +61,12 @@
 
   <ItemGroup>
     <Content Include="app.ico"/>
+    <!-- Bundled yt-dlp: ships beside the manager so a download works with no
+         pip install or PATH entry. Preserved in the source tree and copied to
+         output on build. -->
+    <Content Include="yt-dlp.exe">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

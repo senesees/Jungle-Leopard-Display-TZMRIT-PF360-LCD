@@ -193,6 +193,9 @@ public static class Storage
 
     public static string ThumbnailDirectory { get; } = Path.Combine(Directory, "thumbnails");
 
+    /// <summary>Where a YouTube download lands before it is added to the library.</summary>
+    public static string DownloadDirectory { get; } = Path.Combine(Directory, "downloads");
+
     /// <summary>Where the AI pipeline writes what it generates.</summary>
     public static string GeneratedDirectory { get; } = Path.Combine(Directory, "generated");
 
@@ -211,6 +214,7 @@ public static class Storage
     {
         System.IO.Directory.CreateDirectory(Directory);
         System.IO.Directory.CreateDirectory(ThumbnailDirectory);
+        System.IO.Directory.CreateDirectory(DownloadDirectory);
         System.IO.Directory.CreateDirectory(GeneratedDirectory);
     }
 

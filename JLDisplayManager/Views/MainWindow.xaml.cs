@@ -293,6 +293,13 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnDownload(object sender, RoutedEventArgs e)
+    {
+        var dialog = new YoutubeDialog { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.DownloadedPath is { } path)
+            AddPaths(new[] { path });
+    }
+
     // -----------------------------------------------------------------------
     // Sources
     // -----------------------------------------------------------------------

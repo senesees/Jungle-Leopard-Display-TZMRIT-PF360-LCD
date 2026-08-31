@@ -217,6 +217,10 @@
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button x:Name="AddFilesButton" Content="Add files…"
                                 Style="{StaticResource Btn}" Click="OnAddFiles"/>
+                        <Button x:Name="DownloadButton" Content="Download…"
+                                Style="{StaticResource Btn}" Margin="0,0,8,0"
+                                Click="OnDownload"
+                                ToolTip="Fetch a YouTube video and add it to the library"/>
                         <Button x:Name="OpenGeneratedButton" Content="Open folder"
                                 Style="{StaticResource Btn}" Click="OnOpenGeneratedFolder"
                                 Visibility="Collapsed"

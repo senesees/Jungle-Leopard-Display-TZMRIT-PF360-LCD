@@ -28,7 +28,7 @@
     <ApplicationIcon>app.ico</ApplicationIcon>
     <AssemblyTitle>Jungle Leopard Display Manager</AssemblyTitle>
     <Product>Jungle Leopard Display</Product>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
 
     <!-- Land beside the native output so DllImport resolves with no probing
          paths, no copy step, and no chance of loading a stale DLL. -->

@@ -72,6 +72,8 @@ Run `x64\Release\JungleLeopardDisplayManager.exe`. It finds the panel by
 hardware ID, connects, and sits in the notification area.
 
 - **Add files…**, or drag images and videos onto the window.
+- **Download…** takes a YouTube URL and fetches the video into the library.
+  `yt-dlp.exe` ships beside the manager, so nothing needs installing first.
 - Select an item and **Show now**, or double-click it.
 - **Add to playlist** to build a rotation, then **Play playlist**. Stills hold
   for their dwell in seconds; videos play through and hand over.
@@ -349,6 +351,7 @@ startup, so struct drift fails loudly instead of corrupting memory silently.
 | `%LOCALAPPDATA%\JungleLeopardDisplay\settings.json` | manager settings |
 | `%LOCALAPPDATA%\JungleLeopardDisplay\library.json` | library and playlist |
 | `%LOCALAPPDATA%\JungleLeopardDisplay\thumbnails\` | extracted video frames |
+| `%LOCALAPPDATA%\JungleLeopardDisplay\downloads\` | videos fetched from YouTube |
 | `%LOCALAPPDATA%\JungleLeopardDisplay\manager.log` | connection events, errors |
 | `%LOCALAPPDATA%\jl_display\calibration.txt` | **shared** with the CLI |
 | `%LOCALAPPDATA%\jl_display\packs\*.jlp` | preprocessed video frames, **shared** |

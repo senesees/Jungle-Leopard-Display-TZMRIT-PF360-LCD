@@ -46,8 +46,14 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Frame rate" VerticalAlignment="Center"
                                Foreground="{StaticResource TextDim}"/>
+                    <!-- IsMoveToPointEnabled, because a Slider's default answer
+                         to a click on the track is to step by LargeChange (one
+                         tick) rather than to go where it was clicked. Over a
+                         range of 1 to 60 that reads as the control ignoring you:
+                         clicking at 5 while sitting at 30 moves to 29. -->
                     <Slider x:Name="FpsSlider" Grid.Column="1" Minimum="1" Maximum="60"
                             TickFrequency="1" IsSnapToTickEnabled="True"
+                            IsMoveToPointEnabled="True"
                             VerticalAlignment="Center"
                             ValueChanged="OnFpsChanged"/>
                     <TextBlock x:Name="FpsValue" Grid.Column="2" TextAlignment="Right"

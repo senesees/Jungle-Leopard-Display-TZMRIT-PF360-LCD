@@ -22,6 +22,68 @@
             <SolidColorBrush x:Key="AccentDim" Color="#7A5620"/>
             <SolidColorBrush x:Key="Danger"    Color="#E2603C"/>
 
+            <!-- Menus: the shell draws a context menu light-on-light, which
+                 next to this palette looks like a different application's. It
+                 is templated here rather than left to the system, the same way
+                 the buttons are. -->
+            <Style x:Key="Menu" TargetType="ContextMenu">
+                <Setter Property="Background" Value="{StaticResource BgRaised}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="{StaticResource Text}"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ContextMenu">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="4" Padding="3">
+                                <StackPanel IsItemsHost="True"
+                                            KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="MenuRow" TargetType="MenuItem">
+                <Setter Property="Foreground" Value="{StaticResource Text}"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Padding" Value="10,6"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Border x:Name="row" Background="Transparent" CornerRadius="3">
+                                <ContentPresenter ContentSource="Header"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="row" Property="Background" Value="#2A241C"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.4"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="MenuLine" TargetType="Separator">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Separator">
+                            <Border Height="1" Margin="8,4"
+                                    Background="{StaticResource Line}"/>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <!-- Buttons -->
             <Style x:Key="Btn" TargetType="Button">
                 <Setter Property="Background" Value="{StaticResource BgRaised}"/>

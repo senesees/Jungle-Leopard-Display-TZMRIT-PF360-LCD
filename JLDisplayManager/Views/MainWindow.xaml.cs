@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -360,6 +362,82 @@ public partial class MainWindow : Window
     }
 
     private void OnLibraryDoubleClick(object sender, MouseButtonEventArgs e) => ShowSelected();
+
+    /// <summary>
+    /// Puts the selection where the right click landed, so the context menu
+    /// acts on the tile under the cursor.
+    ///
+    /// A click inside an existing multiple selection leaves it alone: the menu
+    /// carries actions that work on several items, and collapsing the selection
+    /// would take that away for no reason.
+    /// </summary>
+    private void OnItemRightClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBoxItem row) return;
+
+        if (!row.IsSelected)
+        {
+            LibraryList.SelectedItems.Clear();
+            row.IsSelected = true;
+        }
+
+        row.Focus();
+    }
+
+    /// <summary>
+    /// Suppresses the menu on a right click that landed on empty space, where
+    /// every entry in it would have nothing to act on.
+    /// </summary>
+    private void OnLibraryContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (LibraryList.SelectedItems.Count == 0) e.Handled = true;
+    }
+
+    /// <summary>
+    /// Opens the containing folder with the file picked out.
+    ///
+    /// Only ever one file, whatever is selected: Explorer takes a single path
+    /// per call, and opening one window per item would be a worse answer than
+    /// opening the folder they are most likely all in.
+    /// </summary>
+    private void OnOpenFileLocation(object sender, RoutedEventArgs e)
+    {
+        if (LibraryList.SelectedItem is not MediaItem item) return;
+
+        try
+        {
+            if (File.Exists(item.Path))
+            {
+                // The comma is Explorer's own syntax for this and not a
+                // separator that can be swapped for a space.
+                Process.Start(new ProcessStartInfo("explorer.exe")
+                {
+                    Arguments = $"/select,\"{item.Path}\"",
+                    UseShellExecute = true,
+                });
+                return;
+            }
+
+            // The library holds a path, not the file. Something added months ago
+            // may have been moved or deleted since, and its folder is still the
+            // useful place to land.
+            string? folder = Path.GetDirectoryName(item.Path);
+            if (folder is not null && Directory.Exists(folder))
+            {
+                Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+                return;
+            }
+
+            Storage.Log($"could not open the location of {item.Path}: it is gone, and so is its folder");
+            MessageBox.Show(this,
+                "That file is no longer where the library expects it, and neither is its folder.",
+                "Open file location", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Storage.Log($"could not open the location of {item.Path}: {ex.Message}");
+        }
+    }
 
     private void OnShowNow(object sender, RoutedEventArgs e) => ShowSelected();
 

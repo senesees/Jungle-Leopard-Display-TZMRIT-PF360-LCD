@@ -234,7 +234,23 @@
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          SelectionMode="Extended"
                          IsSynchronizedWithCurrentItem="False"
-                         MouseDoubleClick="OnLibraryDoubleClick">
+                         MouseDoubleClick="OnLibraryDoubleClick"
+                         ContextMenuOpening="OnLibraryContextMenuOpening">
+                    <ListBox.ContextMenu>
+                        <ContextMenu Style="{StaticResource Menu}">
+                            <MenuItem Header="Show now" Style="{StaticResource MenuRow}"
+                                      Click="OnShowNow"/>
+                            <MenuItem Header="Add to playlist" Style="{StaticResource MenuRow}"
+                                      Click="OnAddToPlaylist"/>
+                            <Separator Style="{StaticResource MenuLine}"/>
+                            <MenuItem x:Name="OpenLocationMenuItem" Header="Open file location"
+                                      Style="{StaticResource MenuRow}"
+                                      Click="OnOpenFileLocation"/>
+                            <Separator Style="{StaticResource MenuLine}"/>
+                            <MenuItem Header="Remove" Style="{StaticResource MenuRow}"
+                                      Click="OnRemoveFromLibrary"/>
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
                             <WrapPanel Orientation="Horizontal"/>
@@ -242,6 +258,12 @@
                     </ListBox.ItemsPanel>
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
+                            <!-- A ListBox does not move the selection on a right
+                                 click, so without this the menu would act on
+                                 whatever was selected before rather than on the
+                                 tile that was clicked. -->
+                            <EventSetter Event="PreviewMouseRightButtonDown"
+                                         Handler="OnItemRightClick"/>
                             <Setter Property="Padding" Value="0"/>
                             <Setter Property="Margin" Value="0"/>
                             <Setter Property="Background" Value="Transparent"/>
@@ -329,9 +351,13 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Brightness" VerticalAlignment="Center"
                                    Foreground="{StaticResource TextDim}"/>
+                        <!-- Clicking the track goes to the click, rather than
+                             stepping one tick towards it. See the frame rate
+                             slider in Settings for the same reason. -->
                         <Slider x:Name="BrightnessSlider" Grid.Column="1" Margin="10,0"
                                 Minimum="0" Maximum="100" TickFrequency="1"
-                                IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                                IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"
+                                VerticalAlignment="Center"
                                 ValueChanged="OnBrightnessChanged"/>
                         <TextBlock x:Name="BrightnessValue" Grid.Column="2" Width="34"
                                    TextAlignment="Right" VerticalAlignment="Center"/>

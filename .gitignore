@@ -55,3 +55,11 @@ project.assets.json
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Release staging: the zips and notes are attached to a GitHub release, not
+# carried in the tree.
+/dist/
+
+# A vcxproj nested one level deeper than the patterns above reach: gitignore
+# matches `*/x64/` at one path component, not at two.
+JLDisplayCore/JLDisplayCore/

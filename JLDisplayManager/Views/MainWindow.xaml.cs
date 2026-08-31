@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -202,7 +203,82 @@ public partial class MainWindow : Window
               (d.FramesDropped > 0 ? $" · {d.FramesDropped:N0} dropped" : "")
             : "";
 
+        UpdateTimeline(d);
+
         ReconnectButton.Visibility = d.Connected ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    // -----------------------------------------------------------------------
+    // Timeline
+    // -----------------------------------------------------------------------
+
+    /// <summary>True from grabbing the thumb until letting go of it.</summary>
+    private bool _scrubbing;
+
+    /// <summary>
+    /// True while the slider is being moved to follow playback rather than by
+    /// the user, so the poll that redraws the timeline cannot read as a seek.
+    /// </summary>
+    private bool _followingPlayback;
+
+    private void UpdateTimeline(DisplayService d)
+    {
+        if (!d.CanSeek)
+        {
+            TimelinePanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        TimelinePanel.Visibility = Visibility.Visible;
+        TimelineDuration.Text = Clock(d.DurationSeconds);
+
+        // A drag owns the thumb until it is let go: moving it under the cursor
+        // to wherever playback has reached would fight the user for it.
+        if (_scrubbing) return;
+
+        _followingPlayback = true;
+        TimelineSlider.Maximum = d.DurationSeconds;
+        TimelineSlider.Value = Math.Min(d.PositionSeconds, d.DurationSeconds);
+        _followingPlayback = false;
+
+        TimelinePosition.Text = Clock(d.PositionSeconds);
+    }
+
+    private void OnSeekDragStarted(object sender, DragStartedEventArgs e) => _scrubbing = true;
+
+    private void OnSeekDragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        _scrubbing = false;
+
+        // Seeking on release rather than throughout the drag. A preprocessed
+        // item could take either, but a streamed one restarts ffmpeg for every
+        // seek, and doing that per mouse-move would thrash it for positions the
+        // user was only passing over.
+        _app.Display.Seek(TimelineSlider.Value);
+    }
+
+    private void OnTimelineValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_followingPlayback) return;
+
+        // The label tracks the thumb throughout, so a drag reads as scrubbing
+        // even though the panel only moves once it is released.
+        TimelinePosition.Text = Clock(e.NewValue);
+
+        // Not a drag, so this is a click on the track or an arrow key, both of
+        // which have no release to wait for.
+        if (!_scrubbing) _app.Display.Seek(e.NewValue);
+    }
+
+    /// <summary>Seconds as m:ss, or h:mm:ss once there is an hour to show.</summary>
+    private static string Clock(double seconds)
+    {
+        if (seconds < 0 || double.IsNaN(seconds)) seconds = 0;
+
+        var t = TimeSpan.FromSeconds(seconds);
+        return t.TotalHours >= 1
+            ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}"
+            : $"{t.Minutes}:{t.Seconds:00}";
     }
 
     // -----------------------------------------------------------------------

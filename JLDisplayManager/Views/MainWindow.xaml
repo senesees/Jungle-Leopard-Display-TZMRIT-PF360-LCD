@@ -333,6 +333,30 @@
                         </Border>
                     </Viewbox>
 
+                    <!-- Timeline. Hidden unless a video is playing and its
+                         length is known: a scrubber that cannot say where the
+                         end is has nothing to scrub against. -->
+                    <Grid x:Name="TimelinePanel" Margin="0,8,0,0" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="TimelinePosition" Grid.Column="0" FontSize="11"
+                                   VerticalAlignment="Center" MinWidth="38"
+                                   Foreground="{StaticResource TextDim}"/>
+                        <Slider x:Name="TimelineSlider" Grid.Column="1" Margin="8,0"
+                                Minimum="0" Maximum="1" VerticalAlignment="Center"
+                                IsMoveToPointEnabled="True"
+                                Thumb.DragStarted="OnSeekDragStarted"
+                                Thumb.DragCompleted="OnSeekDragCompleted"
+                                ValueChanged="OnTimelineValueChanged"/>
+                        <TextBlock x:Name="TimelineDuration" Grid.Column="2" FontSize="11"
+                                   VerticalAlignment="Center" MinWidth="38"
+                                   TextAlignment="Right"
+                                   Foreground="{StaticResource TextDim}"/>
+                    </Grid>
+
                     <TextBlock x:Name="PlaybackStats" Margin="0,8,0,0" FontSize="11"
                                Foreground="{StaticResource TextDim}"/>
 

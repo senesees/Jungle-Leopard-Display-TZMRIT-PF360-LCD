@@ -38,6 +38,8 @@ public sealed class DisplayService : INotifyPropertyChanged, IDisposable
     private string _message = "";
     private string _error = "";
     private double _fps;
+    private double _positionSeconds;
+    private double _durationSeconds;
     private long _framesSent;
     private long _framesDropped;
     private BitmapSource? _preview;
@@ -106,6 +108,37 @@ public sealed class DisplayService : INotifyPropertyChanged, IDisposable
     {
         get => _fps;
         private set => Set(ref _fps, value);
+    }
+
+    /// <summary>Where the playing video has reached, in seconds.</summary>
+    public double PositionSeconds
+    {
+        get => _positionSeconds;
+        private set => Set(ref _positionSeconds, value);
+    }
+
+    /// <summary>
+    /// How long the playing video runs, or 0 when that is not known — ffprobe
+    /// is optional, and a still has no length.
+    /// </summary>
+    public double DurationSeconds
+    {
+        get => _durationSeconds;
+        private set => Set(ref _durationSeconds, value);
+    }
+
+    /// <summary>True when there is a video playing that can be seeked in.</summary>
+    public bool CanSeek =>
+        State == NativeMethods.JlState.Playing && DurationSeconds > 0;
+
+    /// <summary>
+    /// Moves the playing video. Takes effect at the next frame rather than
+    /// immediately, so calling it repeatedly while dragging is cheap.
+    /// </summary>
+    public void Seek(double seconds)
+    {
+        if (seconds < 0) seconds = 0;
+        NativeMethods.jl_seek(seconds);
     }
 
     public long FramesSent
@@ -321,6 +354,9 @@ public sealed class DisplayService : INotifyPropertyChanged, IDisposable
         Fps = s.Fps;
         FramesSent = s.FramesSent;
         FramesDropped = s.FramesDropped;
+        PositionSeconds = s.PositionSeconds;
+        DurationSeconds = s.DurationSeconds;
+        Raise(nameof(CanSeek));
 
         if (s.FrameCount != _lastFrameCount)
         {

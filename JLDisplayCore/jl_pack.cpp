@@ -734,7 +734,9 @@ namespace jl {
     bool PlayPack(Device& device, const FramePack& pack, const RenderOpts& opts,
         AbortFn abort, void* abortUser,
         FrameFn onFrame, void* frameUser,
-        PlaybackStats* stats)
+        PlaybackStats* stats,
+        SeekFn takeSeek, void* seekUser,
+        PositionFn onPosition, void* positionUser)
     {
         auto aborted = [&] { return abort && abort(abortUser); };
 
@@ -766,11 +768,31 @@ namespace jl {
         std::vector<uint8_t> scratch;
         scratch.reserve(kMaxJpegBytes);
 
+        // Evenly spaced frames at a known rate, so the length is arithmetic
+        // rather than something to go and ask ffprobe about.
+        const int    fps = pack.Fps() > 0 ? pack.Fps() : 30;
+        const double duration = (double)pack.FrameCount() / fps;
+
         while (running) {
             ++passes;
 
             for (size_t i = 0; i < pack.FrameCount() && running; ++i) {
                 if (aborted()) { running = false; break; }
+
+                // The frames are already built and evenly spaced, so a seek is
+                // an index and lands exactly where it was asked to.
+                if (takeSeek) {
+                    const double want = takeSeek(seekUser);
+                    if (want >= 0.0) {
+                        const double clamped = want < 0.0 ? 0.0
+                            : (want > duration ? duration : want);
+                        size_t target = (size_t)(clamped * fps);
+                        if (target >= pack.FrameCount()) target = pack.FrameCount() - 1;
+                        i = target;
+                    }
+                }
+
+                if (onPosition) onPosition((double)i / fps, duration, positionUser);
 
                 size_t len = 0;
                 const uint8_t* bytes = pack.Frame(i, len);

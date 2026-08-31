@@ -99,6 +99,24 @@ namespace jl {
     using AbortFn = bool (*)(void* user);
 
     // -----------------------------------------------------------------------
+    // Seeking
+    //
+    // A seek is a request the player collects rather than a call into it: both
+    // play loops are blocking, and the only safe moment to move is between two
+    // frames. The host raises one from whatever thread it likes; the loop takes
+    // it at the next frame boundary.
+    // -----------------------------------------------------------------------
+
+    // Returns the position to jump to in seconds, or a negative number when no
+    // seek is pending. Taking one consumes it, so a request fires exactly once.
+    using SeekFn = double (*)(void* user);
+
+    // Where playback has reached, in seconds, and how long the item runs for.
+    // A duration of zero means it could not be determined — ffprobe is
+    // optional, and a stream need not know its own length.
+    using PositionFn = void (*)(double seconds, double duration, void* user);
+
+    // -----------------------------------------------------------------------
     // Device
     // -----------------------------------------------------------------------
 
@@ -196,10 +214,17 @@ namespace jl {
     // wall clock and holding live mode. Blocks until the source ends, `abort`
     // returns true, or the port dies. Leaves the device in live mode with a
     // flush marker sent.
+    //
+    // A seek restarts ffmpeg with the new position as its input offset, which
+    // is the only way to move within a stream that is being transcoded as it
+    // plays. Position is counted from frames emitted since that offset, since
+    // the frames arrive at a known rate by construction.
     bool PlayVideo(Device& device, const std::wstring& path, const RenderOpts& opts,
         AbortFn abort, void* abortUser,
         FrameFn onFrame, void* frameUser,
-        PlaybackStats* stats);
+        PlaybackStats* stats,
+        SeekFn takeSeek = nullptr, void* seekUser = nullptr,
+        PositionFn onPosition = nullptr, void* positionUser = nullptr);
 
     // -----------------------------------------------------------------------
     // Preprocessing
@@ -311,10 +336,15 @@ namespace jl {
 
     // Plays a built pack, pacing and holding live mode exactly as PlayVideo
     // does. No child process is involved.
+    //
+    // Seeking here is just an index: the frames are already built and evenly
+    // spaced, so a jump costs nothing and lands exactly where it was asked to.
     bool PlayPack(Device& device, const FramePack& pack, const RenderOpts& opts,
         AbortFn abort, void* abortUser,
         FrameFn onFrame, void* frameUser,
-        PlaybackStats* stats);
+        PlaybackStats* stats,
+        SeekFn takeSeek = nullptr, void* seekUser = nullptr,
+        PositionFn onPosition = nullptr, void* positionUser = nullptr);
 
     // PrepareImage with the answer remembered, so a still in a playlist is
     // transcoded once rather than once per rotation. Off transcodes every time.

@@ -78,6 +78,13 @@ extern "C" {
         int64_t framesDropped;
         double  fps;
 
+        // Where the current video has reached and how long it runs, both in
+        // seconds. Duration is 0 when it could not be determined: ffprobe is
+        // optional, and a still has no length. Both are 0 when nothing is
+        // playing.
+        double  positionSeconds;
+        double  durationSeconds;
+
         // Increments once each time an item runs to its natural end. The host
         // watches for a change rather than a flag, so a fast item cannot be
         // missed between two polls.
@@ -130,6 +137,15 @@ extern "C" {
 
     // Stops the current item and blanks the panel. Returns once it has stopped.
     JLAPI void jl_stop(void);
+
+    // Moves the currently playing video to `seconds`. Takes effect at the next
+    // frame boundary, which is the only safe moment to move: a preprocessed
+    // item jumps straight to the frame, while a streamed one restarts ffmpeg at
+    // the mark and therefore lands on the nearest keyframe before it.
+    //
+    // Ignored when nothing is playing, or when what is playing is a still.
+    // Values outside the item are clamped into it.
+    JLAPI void jl_seek(double seconds);
 
     // -----------------------------------------------------------------------
     // Observation

@@ -179,11 +179,18 @@ namespace jl {
         std::wstring VideoCommand(const std::wstring& ffmpeg, const std::wstring& input,
             const std::wstring& filter, const std::wstring& hwaccel,
             int fps, int quality, bool loop, bool paced,
-            double seconds, bool keyframesOnly)
+            double seconds, bool keyframesOnly, double startSeconds)
         {
             std::wstring cl = L"\"" + ffmpeg + L"\" -y -loglevel error";
             // Must precede -i: these are input options.
             if (!hwaccel.empty()) cl += L" -hwaccel " + hwaccel;
+            // Before -i, so ffmpeg seeks the container by keyframe instead of
+            // decoding and discarding everything up to the mark. That is what
+            // makes a seek land in well under a second on a long file; the cost
+            // is that it lands on the nearest keyframe rather than the exact
+            // moment, which at this panel's size is not a difference anyone can
+            // see.
+            if (startSeconds > 0) cl += L" -ss " + std::to_wstring(startSeconds);
             // -skip_frame nokey makes the decoder discard inter-frames without
             // reconstructing them, so a survey costs a fraction of a full decode.
             // Keyframes are intra-coded and therefore the most detailed frames in the

@@ -44,6 +44,12 @@ namespace {
         std::atomic<bool> abortItem{ false };
         std::atomic<bool> shuttingDown{ false };
 
+        // A pending seek in seconds, or negative for none. Written by whichever
+        // thread the host calls from and taken by the playback loop at its next
+        // frame; an unconsumed request is simply replaced, so dragging a
+        // timeline leaves only the position the user let go of.
+        std::atomic<double> seekTo{ -1.0 };
+
         // Read once by each worker as it starts, so changing the mode never
         // disturbs an item already running. Atomic rather than under `cmd`
         // because the host sets it from its UI thread whenever the user picks a
@@ -67,6 +73,8 @@ namespace {
         int64_t  framesSent = 0;
         int64_t  framesDropped = 0;
         double   fps = 0.0;
+        double   positionSeconds = 0.0;
+        double   durationSeconds = 0.0;
         int32_t  finishedCount = 0;
         int32_t  frameCount = 0;
         std::wstring message;
@@ -163,6 +171,19 @@ namespace {
             g.lastFrame = jpeg;
             ++g.frameCount;
         }
+    }
+
+    // Consumes the pending seek, so one request moves playback exactly once.
+    double TakeSeek(void*)
+    {
+        return g.seekTo.exchange(-1.0);
+    }
+
+    void OnPosition(double seconds, double duration, void*)
+    {
+        Guard lock(g.state);
+        g.positionSeconds = seconds;
+        g.durationSeconds = duration;
     }
 
     void PublishFrame(const std::vector<uint8_t>& jpeg)
@@ -272,7 +293,7 @@ namespace {
 
                     jl::PlaybackStats stats;
                     bool ok = jl::PlayPack(g.device, pack, opts, ShouldAbort, nullptr,
-                        OnFrame, nullptr, &stats);
+                        OnFrame, nullptr, &stats, TakeSeek, nullptr, OnPosition, nullptr);
 
                     FinishPlayback(ok, stats);
                     return 0;
@@ -289,7 +310,7 @@ namespace {
 
             jl::PlaybackStats stats;
             bool ok = jl::PlayVideo(g.device, path, opts, ShouldAbort, nullptr,
-                OnFrame, nullptr, &stats);
+                OnFrame, nullptr, &stats, TakeSeek, nullptr, OnPosition, nullptr);
 
             FinishPlayback(ok, stats);
             return 0;
@@ -354,8 +375,13 @@ namespace {
             g.framesSent = 0;
             g.framesDropped = 0;
             g.fps = 0.0;
+            g.positionSeconds = 0.0;
+            g.durationSeconds = 0.0;
             g.itemStartedAt = GetTickCount();
         }
+
+        // A seek aimed at the item being replaced must not land on the new one.
+        g.seekTo.store(-1.0);
 
         g.itemPath = path;
         g.itemOpts = o;
@@ -500,9 +526,23 @@ void jl_stop(void)
 
     if (g.device.IsOpen()) g.device.FlushEoi();
 
+    g.seekTo.store(-1.0);
+
     Guard s(g.state);
     if (g.st != JL_STATE_DISCONNECTED) g.st = JL_STATE_IDLE;
     g.message.clear();
+    g.positionSeconds = 0.0;
+    g.durationSeconds = 0.0;
+}
+
+void jl_seek(double seconds)
+{
+    // No lock and no worker check: the request is a single atomic, and the
+    // playback loop is the only thing that reads it. Taking g.cmd here would
+    // block the UI thread behind whatever the worker is doing, which for a
+    // dragged timeline is exactly the wrong trade.
+    if (seconds < 0.0) seconds = 0.0;
+    g.seekTo.store(seconds);
 }
 
 void jl_get_status(JlStatus* out)
@@ -515,6 +555,8 @@ void jl_get_status(JlStatus* out)
     out->framesSent = g.framesSent;
     out->framesDropped = g.framesDropped;
     out->fps = g.fps;
+    out->positionSeconds = g.positionSeconds;
+    out->durationSeconds = g.durationSeconds;
     out->finishedCount = g.finishedCount;
     out->frameCount = g.frameCount;
     CopyTo(out->port, _countof(out->port), g.port);

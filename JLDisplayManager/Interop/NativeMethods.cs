@@ -66,6 +66,12 @@ public static class NativeMethods
         public long FramesSent;
         public long FramesDropped;
         public double Fps;
+
+        /// <summary>Where the playing video has reached, in seconds.</summary>
+        public double PositionSeconds;
+
+        /// <summary>How long it runs, or 0 when that could not be determined.</summary>
+        public double DurationSeconds;
         public int FinishedCount;
         public int FrameCount;
 
@@ -102,6 +108,13 @@ public static class NativeMethods
 
     [DllImport(Dll)]
     public static extern void jl_stop();
+
+    /// <summary>
+    /// Moves the playing video to <paramref name="seconds"/>, taking effect at
+    /// the next frame. Ignored when nothing is playing.
+    /// </summary>
+    [DllImport(Dll)]
+    public static extern void jl_seek(double seconds);
 
     [DllImport(Dll)]
     public static extern void jl_get_status(out JlStatus status);
@@ -142,11 +155,13 @@ public static class NativeMethods
         int opts = Marshal.SizeOf<JlRenderOpts>();
         int status = Marshal.SizeOf<JlStatus>();
 
-        if (opts != 88 || status != 1128)
+        // 1144 rather than 1128 since JlStatus gained the two playback position
+        // doubles.
+        if (opts != 88 || status != 1144)
         {
             throw new InvalidOperationException(
                 $"JLDisplayNative.dll interop layout mismatch: " +
-                $"JlRenderOpts={opts} (expected 88), JlStatus={status} (expected 1128). " +
+                $"JlRenderOpts={opts} (expected 88), JlStatus={status} (expected 1144). " +
                 "Interop/NativeMethods.cs and jl_api.h have drifted apart.");
         }
     }

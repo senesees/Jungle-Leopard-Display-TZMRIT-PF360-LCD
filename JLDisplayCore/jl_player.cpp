@@ -43,7 +43,9 @@ namespace jl {
     bool PlayVideo(Device& device, const std::wstring& path, const RenderOpts& opts,
         AbortFn abort, void* abortUser,
         FrameFn onFrame, void* frameUser,
-        PlaybackStats* stats)
+        PlaybackStats* stats,
+        SeekFn takeSeek, void* seekUser,
+        PositionFn onPosition, void* positionUser)
     {
         auto aborted = [&] { return abort && abort(abortUser); };
 
@@ -83,17 +85,41 @@ namespace jl {
         bool ok = true;
         bool formatChecked = false;
 
+        // Only worth asking once, and only if anyone is listening: it spawns
+        // ffprobe, and a file that will not say how long it is will not start
+        // saying so partway through.
+        const double duration = onPosition ? ProbeDurationSeconds(ffmpeg, path) : 0.0;
+
+        // Where the current ffmpeg run was told to start. Position is this plus
+        // however much has been emitted since, because the frames leave ffmpeg
+        // at exactly the rate we asked for.
+        double startAt = 0.0;
+        double pendingSeek = -1.0;
+
         // Loop at the application level by restarting ffmpeg. -stream_loop proved
         // unreliable here, and this also recovers if ffmpeg dies mid-playback.
         do {
+            if (pendingSeek >= 0.0) {
+                startAt = pendingSeek;
+                pendingSeek = -1.0;
+            }
+
             detail::FfmpegPipe pipe;
             std::wstring cl = detail::VideoCommand(ffmpeg, path, filter, resolved.hwaccel,
-                resolved.fps, quality, false, false, 0);
+                resolved.fps, quality, false, false, 0, false, startAt);
             if (!detail::StartFfmpegPipe(cl, pipe)) { ok = false; break; }
             ++passes;
 
+            size_t inPass = 0;
             std::vector<uint8_t> acc, frame;
             while (!aborted() && detail::ReadNextJpeg(pipe, acc, frame)) {
+                // Between two frames is the only safe moment to move, and the
+                // only way to move a transcode is to restart it at the mark.
+                if (takeSeek) {
+                    const double want = takeSeek(seekUser);
+                    if (want >= 0.0) { pendingSeek = want; break; }
+                }
+
                 if (frame.size() > kMaxJpegBytes) { ++dropped; continue; }
 
                 // Once per playback, on the first frame that will actually be
@@ -114,8 +140,12 @@ namespace jl {
 
                 if (!device.SendImageFrame(frame)) { ok = false; break; }
                 ++sent;
+                ++inPass;
 
                 if (onFrame) onFrame(frame, frameUser);
+
+                if (onPosition && resolved.fps > 0)
+                    onPosition(startAt + (double)inPass / resolved.fps, duration, positionUser);
 
                 if (!pace.KeepAliveIfDue(device, now)) { ok = false; break; }
 
@@ -130,10 +160,17 @@ namespace jl {
             if (pipe.process) GetExitCodeProcess(pipe.process, &exitCode);
             pipe.Close();
 
-            if (ok && !aborted() && exitCode != 0 && exitCode != STILL_ACTIVE)
+            // A seek kills ffmpeg mid-stream on purpose, so its exit code says
+            // nothing about whether anything went wrong.
+            if (ok && !aborted() && pendingSeek < 0.0
+                && exitCode != 0 && exitCode != STILL_ACTIVE)
                 Log(LogLevel::Warn, L"ffmpeg exited with code %lu", exitCode);
 
-        } while (ok && resolved.loop && !aborted());
+            // Reaching the end on a pass that had been seeked into means the
+            // next lap starts at the top, not back at the mark.
+            if (pendingSeek < 0.0) startAt = 0.0;
+
+        } while (ok && !aborted() && (pendingSeek >= 0.0 || resolved.loop));
 
         const double elapsed = (GetTickCount() - pace.startedAt) / 1000.0;
 

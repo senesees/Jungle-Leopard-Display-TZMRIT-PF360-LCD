@@ -106,10 +106,12 @@ namespace jl {
         // present and working; ffmpeg falls back to software if the device fails.
         std::wstring ResolveHwaccel(const std::wstring& ffmpeg, const std::wstring& requested);
 
+        // `startSeconds` seeks the input before decoding; `seconds` caps how much
+        // is decoded after that.
         std::wstring VideoCommand(const std::wstring& ffmpeg, const std::wstring& input,
             const std::wstring& filter, const std::wstring& hwaccel,
             int fps, int quality, bool loop, bool paced,
-            double seconds, bool keyframesOnly = false);
+            double seconds, bool keyframesOnly = false, double startSeconds = 0.0);
 
         // -------------------------------------------------------------------
         // Calibration cache

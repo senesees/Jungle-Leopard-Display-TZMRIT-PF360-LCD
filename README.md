@@ -383,18 +383,38 @@ no flow control. Found by walking the ports class for hardware ID
 `length` counts the whole frame (`payload + 7`). The checksum is a plain 16-bit
 sum of every preceding byte.
 
-| Cmd | Meaning |
-|---|---|
-| `0x01` | Restart |
-| `0x03` | Set backlight (one byte, 0–100) |
-| `0x06` | Get device info (replies with JSON) |
-| `0x11` | Enter / hold live mode |
-| `0x14` | Set motion-before-off |
-| `0x15` | Set motion timeout |
-| `0x20` | Set region |
-| `0x21` | Close |
-| `0x25` | Set motor |
-| `0x26` | Set real-time timeout |
+| Cmd | Meaning | Reaches this panel |
+|---|---|---|
+| `0x01` | Restart | yes |
+| `0x03` | Set backlight (one byte, 0–100) | yes |
+| `0x06` | Get device info (replies with JSON) | yes |
+| `0x0C` | Begin OTA firmware flash | yes |
+| `0x11` | Enter / hold live mode | yes |
+| `0x14` | Set motion-before-off | yes |
+| `0x15` | Set motion timeout | firmware >= 2.8 |
+| `0x20` | Set region (UTF-8 string) | yes |
+| `0x21` | Close | firmware >= 3.1 |
+| `0x23` | Set serial number, then reboot | yes |
+| `0x25` | Set motor — open (`1`) / close (`2`) | only when region is `ycc28_v1` |
+| `0x26` | Set real-time timeout | firmware >= 4.1, so never here |
+
+The right-hand column is the condition the vendor app checks before it will send
+that command, taken from `main/_baseClass/device.js` and evaluated against this
+panel (firmware 3.1). Only `0x03`, `0x06` and `0x11` are sent from this project.
+
+**`0x25` is not a pump-speed control.** The payload is one byte: `1` opens, `2`
+closes. A 60-second CPU-temperature poll drives it — above the configured
+threshold (default 50 °C) it opens, below it closes — and the device stays busy
+for `actionTimeout` seconds afterwards, 35 by default, rejecting further
+commands. It only runs on hardware whose region has been set to `ycc28_v1` via
+`0x20`, which is not this one.
+
+**`0x0C` and `0x23` are documented but not implemented, on purpose.** `0x23`
+takes a serial number, writes it to the panel and reboots into it. `0x0C` takes
+`F2 FF` followed by the firmware size as a 32-bit little-endian value, after
+which the `.bin` streams through the image envelope below. Neither is gated away
+from this hardware, and both are one bad byte from a panel that no longer
+enumerates.
 
 **Image frames use a different envelope** — no `55 AA`, no command byte:
 

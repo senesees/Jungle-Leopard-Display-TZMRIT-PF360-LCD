@@ -21,19 +21,31 @@ namespace jl {
 
     // -----------------------------------------------------------------------
     // Protocol constants
+    //
+    // The full opcode table, not just the three this code sends. Each comment
+    // is the condition the vendor app checks before it will send that command,
+    // read out of main/_baseClass/device.js and evaluated against this panel
+    // (TXW818-ST7701S-5.5inch-hor, firmware 3.1). A command marked "not ours"
+    // is one the vendor app would refuse to send here at all.
+    //
+    // OtaBegin and SetSerialNum are recorded and deliberately not implemented.
+    // One flashes firmware and the other rewrites the panel identity and
+    // reboots, and neither is gated away from this hardware.
     // -----------------------------------------------------------------------
 
     namespace cmd {
         constexpr uint8_t Restart = 0x01;
         constexpr uint8_t SetLight = 0x03;
         constexpr uint8_t GetDeviceInfo = 0x06;
+        constexpr uint8_t OtaBegin = 0x0C;  // F2 FF + u32 LE size, then a raw .bin
         constexpr uint8_t Live = 0x11;  // start / hold live mode
         constexpr uint8_t SetMotionBeforeOff = 0x14;
-        constexpr uint8_t SetMotionTimeout = 0x15;
-        constexpr uint8_t SetRegion = 0x20;
-        constexpr uint8_t Close = 0x21;
-        constexpr uint8_t SetMotor = 0x25;
-        constexpr uint8_t SetRealTimeTimeout = 0x26;
+        constexpr uint8_t SetMotionTimeout = 0x15;  // version >= 2.8
+        constexpr uint8_t SetRegion = 0x20;  // UTF-8 string; this is what arms SetMotor
+        constexpr uint8_t Close = 0x21;  // version >= 3.1, so ours
+        constexpr uint8_t SetSerialNum = 0x23;  // rewrites the serial, then reboots
+        constexpr uint8_t SetMotor = 0x25;  // region == "ycc28_v1", not ours
+        constexpr uint8_t SetRealTimeTimeout = 0x26;  // version >= 4.1, not ours
     }
 
     constexpr DWORD  kLiveKeepAliveMs = 1500;        // vendor app's interval

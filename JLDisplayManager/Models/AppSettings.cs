@@ -10,6 +10,22 @@ using System.Text.Json.Serialization;
 namespace JLDisplayManager.Models;
 
 /// <summary>
+/// How much of the transcoding happens before an item starts rather than while
+/// it plays. Mirrors JlPreprocess on the native side.
+/// </summary>
+public enum PreprocessMode
+{
+    /// <summary>ffmpeg streams for as long as something is on the panel.</summary>
+    Off = 0,
+
+    /// <summary>Frames are built into RAM once, then ffmpeg stops.</summary>
+    Memory = 1,
+
+    /// <summary>Frames are built into a file once and reused across runs.</summary>
+    Disk = 2,
+}
+
+/// <summary>
 /// Everything the app remembers between runs, split in two files: settings the
 /// user tweaks, and the library they build up. Both live under LOCALAPPDATA
 /// next to the calibration cache the CLI already writes.
@@ -27,6 +43,9 @@ public sealed class AppSettings : INotifyPropertyChanged
     private bool _resumeOnStart = true;
     private bool _autoReconnect = true;
     private bool _blankOnExit = true;
+    private PreprocessMode _preprocess = PreprocessMode.Memory;
+    private int _memoryBudgetMB = 512;
+    private int _diskBudgetMB = 8192;
 
     /// <summary>Global default; a MediaItem may override it.</summary>
     public int Rotate
@@ -58,6 +77,38 @@ public sealed class AppSettings : INotifyPropertyChanged
     {
         get => _hwaccel;
         set => Set(ref _hwaccel, value ?? "auto");
+    }
+
+    /// <summary>
+    /// Whether frames are prepared up front. Memory is the default: it writes
+    /// nothing, is bounded, and quietly falls back to streaming for a source too
+    /// long to hold — so the worst case is exactly the old behaviour.
+    /// </summary>
+    public PreprocessMode Preprocess
+    {
+        get => _preprocess;
+        set => Set(ref _preprocess, value);
+    }
+
+    /// <summary>
+    /// Ceiling for Memory mode, in megabytes. A source whose frames would not
+    /// fit streams instead, so this trades RAM for how much of the library gets
+    /// the benefit rather than deciding what will play.
+    /// </summary>
+    public int MemoryBudgetMB
+    {
+        get => _memoryBudgetMB;
+        set => Set(ref _memoryBudgetMB, Math.Clamp(value, 32, 16384));
+    }
+
+    /// <summary>
+    /// Ceiling for the Disk pack cache, in megabytes. Reaching it evicts the
+    /// least recently used packs rather than refusing to build new ones.
+    /// </summary>
+    public int DiskBudgetMB
+    {
+        get => _diskBudgetMB;
+        set => Set(ref _diskBudgetMB, Math.Clamp(value, 128, 262144));
     }
 
     /// <summary>Empty means autodetect by hardware ID, which is nearly always right.</summary>

@@ -16,6 +16,10 @@ namespace jl {
         std::wstring Widen(const std::string& s);
         bool ReadFileBytes(const std::wstring& path, std::vector<uint8_t>& out);
 
+        // FNV-1a as 16 hex digits. Both cache keys — calibration and packs —
+        // are built from it, so they invalidate on exactly the same events.
+        std::string Fnv1aHex(const std::string& s);
+
         // Pulls width/height out of a JPEG's SOFn marker.
         bool JpegSize(const std::vector<uint8_t>& j, int& w, int& h);
 
@@ -69,6 +73,31 @@ namespace jl {
         // hflip+vflip is an exact, cheap 180 with no resampling.
         std::wstring BuildFilter(bool stretch, int rotate);
 
+        // -------------------------------------------------------------------
+        // Frame pacing
+        //
+        // Streaming and pack playback differ only in where the frames come
+        // from; the timing, the keep-alive and the resync after a stall are the
+        // same problem and live here once.
+        // -------------------------------------------------------------------
+
+        struct Pacer {
+            DWORD periodMs = 33;
+            DWORD nextFrameAt = 0;
+            DWORD lastKeepAlive = 0;
+            DWORD startedAt = 0;
+
+            void Start(int fps);
+
+            // Sleeps until this frame's slot, then reports the time it woke at.
+            // A caller more than half a second late is resynced rather than
+            // left trying to catch up frame by frame.
+            DWORD WaitForSlot();
+
+            // Live mode lapses without this; false means the device went away.
+            bool KeepAliveIfDue(Device& device, DWORD now);
+        };
+
         // ffmpeg's own "-hwaccel auto" only considers methods needing no explicit
         // device setup, so on Windows it lands on d3d11va or nothing and never
         // picks CUDA. Resolve "auto" ourselves against what the build offers.
@@ -91,6 +120,7 @@ namespace jl {
         // entry automatically. Shared with the CLI: same file, same format.
         // -------------------------------------------------------------------
 
+        std::wstring CacheDirectory();
         std::wstring CacheFilePath();
         std::string  CalibrationKey(const std::wstring& input, const std::wstring& filter,
             size_t sizeTarget);

@@ -94,6 +94,54 @@ host-side (as the vendor app does).
 reads the real registered state, so removing the task outside the app is
 reflected honestly.
 
+**Preprocessing** decides whether ffmpeg runs for as long as something is on the
+panel, or only once per item. See below.
+
+---
+
+## Preprocessing
+
+The panel is not a display — it is an MJPEG sink. Everything it accepts is one
+fixed shape: 960×480, baseline 4:2:0, under 80 KB, arriving at a steady rate. So
+what ffmpeg produces for a given source is a pure function of that source's bytes
+and the render options, which is the same assumption the calibration cache has
+always made. Those frames can therefore be computed once and replayed.
+
+| Mode | What happens | Cost |
+|---|---|---|
+| **Off** | ffmpeg streams MJPEG for as long as the item plays | a running ffmpeg, always |
+| **Memory** | frames built into RAM once, then ffmpeg exits | ~1.2 MB/s of RAM, rebuilt each launch |
+| **Disk** | frames built into a pack file once, reused forever | ~70 MB per minute of video |
+
+**Memory** is the default. It writes nothing, and a source too long to hold
+falls back to streaming on its own — so its worst case is exactly the old
+behaviour.
+
+Both limits are settable in **Settings → Preprocessing**, which shows whichever
+one the selected mode actually uses (Off has none). Defaults are 512 MB in
+memory and 8 GB on disk, and each preset is labelled with roughly how much video
+it holds. The two limits behave differently on purpose: reaching the memory
+limit makes that one item stream instead, while reaching the disk limit evicts
+the least recently used packs. So raising the memory limit widens what benefits
+— it never decides what will play.
+
+A pack is deliberately dull: a header, the frame blobs, then an index. Identical
+frames share one blob and the index points at it more than once, which collapses
+GIFs and static footage to a fraction of their nominal size. Disk packs are
+memory-**mapped** rather than read, so a long video costs address space rather
+than working set, and the cache evicts least-recently-used once it passes its
+limit.
+
+Two things worth knowing:
+
+- **The frame rate is part of what a frame is.** It is baked into the pack's key
+  along with rotation, stretch and the calibrated quality, so changing any of
+  them rebuilds every pack. That is correct rather than wasteful — the old frames
+  really are the wrong frames — but it is why the frame-rate slider feels
+  expensive in Disk mode.
+- **Stills benefit too, in every mode but Off.** A still in a playlist used to be
+  re-transcoded on every rotation; now it is prepared once and remembered.
+
 ---
 
 ## AI image pipeline
@@ -200,6 +248,8 @@ Jungle Leopard Display.exe [--port COMn] [--rotate 0|90|180|270] [--stretch]
     --image FILE [--once]
     --video FILE [--loop] [--fps N] [--quality 2-31]
                  [--recalibrate] [--hwaccel auto|d3d11va|cuda|qsv]
+                 [--preprocess none|memory|disk] [--limit MB]
+    --clear-cache
 ```
 
 ```sh
@@ -214,6 +264,12 @@ Jungle Leopard Display.exe [--port COMn] [--rotate 0|90|180|270] [--stretch]
 
 # loop a clip
 "Jungle Leopard Display.exe" --video clip.mp4 --loop
+
+# transcode it once, then loop it forever with no ffmpeg running
+"Jungle Leopard Display.exe" --video clip.gif --loop --preprocess disk
+
+# same, but cap the pack cache at 2 GB (--limit applies to whichever mode is set)
+"Jungle Leopard Display.exe" --video clip.gif --loop --preprocess disk --limit 2048
 ```
 
 Without `--once`, `--image` holds live mode until interrupted. `--stretch` fills
@@ -229,7 +285,7 @@ small inputs the extra GPU↔system copies can make it slower than plain softwar
 ## How it works
 
 ```
-JLDisplayCore  (static lib)   protocol · framing · ffmpeg · calibration
+JLDisplayCore  (static lib)   protocol · framing · ffmpeg · calibration · packs
       │
       ├── Jungle Leopard Display.exe    thin CLI over the core
       │
@@ -295,10 +351,17 @@ startup, so struct drift fails loudly instead of corrupting memory silently.
 | `%LOCALAPPDATA%\JungleLeopardDisplay\thumbnails\` | extracted video frames |
 | `%LOCALAPPDATA%\JungleLeopardDisplay\manager.log` | connection events, errors |
 | `%LOCALAPPDATA%\jl_display\calibration.txt` | **shared** with the CLI |
+| `%LOCALAPPDATA%\jl_display\packs\*.jlp` | preprocessed video frames, **shared** |
+| `%LOCALAPPDATA%\jl_display\packs\*.jlf` | preprocessed stills, **shared** |
 
 The calibration cache is keyed on each file's absolute path, size, timestamp and
 filter chain, so re-encoding or replacing a video invalidates its entry
 automatically — and a video calibrated in one program is instant in the other.
+
+Packs are keyed on the same material plus the frame rate and the calibrated
+quality, and the key is the filename, so a stale pack can never be mistaken for a
+current one — it simply stops being looked up and ages out. The CLI and the
+manager share them the same way they share calibration.
 
 ---
 
@@ -415,7 +478,7 @@ install pwsh to quiet it.
 ## Repository layout
 
 ```
-JLDisplayCore/        protocol, device I/O, ffmpeg, calibration cache
+JLDisplayCore/        protocol, device I/O, ffmpeg, calibration cache, frame packs
 JLDisplayNative/      flat C API over the core, for P/Invoke
 JLDisplayManager/     WPF tray app (net9.0-windows, x64)
   Services/Ai/        SwarmUI client, LLM clients, prompt enhancer, pipeline

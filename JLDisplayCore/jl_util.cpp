@@ -89,6 +89,18 @@ namespace jl {
             return j[i + 11] == 0x22 && j[i + 14] == 0x11 && j[i + 17] == 0x11;
         }
 
+        // FNV-1a over the bytes, rendered as 16 hex digits. Shared by the
+        // calibration cache and the frame packs so both derive their keys from
+        // exactly the same material and invalidate together.
+        std::string Fnv1aHex(const std::string& s)
+        {
+            uint64_t h = 1469598103934665603ULL;
+            for (unsigned char c : s) { h ^= c; h *= 1099511628211ULL; }
+            char buf[17];
+            sprintf_s(buf, sizeof(buf), "%016llx", (unsigned long long)h);
+            return buf;
+        }
+
         uint16_t Sum16(const std::vector<uint8_t>& b, size_t from, size_t to)
         {
             uint32_t s = 0;

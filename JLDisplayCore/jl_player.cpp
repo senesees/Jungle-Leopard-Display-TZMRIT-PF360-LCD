@@ -1,8 +1,44 @@
-// jl_player.cpp — streaming a video to the panel.
+// jl_player.cpp — streaming a video to the panel, and the frame pacing that
+// pack playback shares with it.
 
 #include "jl_internal.h"
 
 namespace jl {
+
+    namespace detail {
+
+        void Pacer::Start(int fps)
+        {
+            periodMs = 1000 / (DWORD)(fps > 0 ? fps : 30);
+            startedAt = GetTickCount();
+            nextFrameAt = startedAt;
+            lastKeepAlive = startedAt;
+        }
+
+        DWORD Pacer::WaitForSlot()
+        {
+            // Pace against the wall clock rather than relying on ffmpeg's -re,
+            // which does not throttle reliably when writing to a pipe — and
+            // which a pack has no equivalent of at all.
+            DWORD now = GetTickCount();
+            if ((LONG)(nextFrameAt - now) > 0) Sleep(nextFrameAt - now);
+            nextFrameAt += periodMs;
+
+            now = GetTickCount();
+            if ((LONG)(now - nextFrameAt) > 500) nextFrameAt = now;   // fell behind; resync
+            return now;
+        }
+
+        bool Pacer::KeepAliveIfDue(Device& device, DWORD now)
+        {
+            if (now - lastKeepAlive < kLiveKeepAliveMs) return true;
+            lastKeepAlive = now;
+            return device.SendCommand(cmd::Live);
+        }
+
+    }  // namespace detail
+
+    // -----------------------------------------------------------------------
 
     bool PlayVideo(Device& device, const std::wstring& path, const RenderOpts& opts,
         AbortFn abort, void* abortUser,
@@ -40,10 +76,9 @@ namespace jl {
         Log(LogLevel::Info, L"playing at %d fps%s...",
             resolved.fps, resolved.loop ? L", looping" : L"");
 
-        const DWORD framePeriodMs = 1000 / (DWORD)resolved.fps;
-        DWORD lastKeepAlive = GetTickCount();
-        DWORD startedAt = lastKeepAlive;
-        DWORD nextFrameAt = lastKeepAlive;
+        detail::Pacer pace;
+        pace.Start(resolved.fps);
+
         size_t sent = 0, dropped = 0, passes = 0;
         bool ok = true;
         bool formatChecked = false;
@@ -75,26 +110,17 @@ namespace jl {
                             L"the panel will draw them wrong");
                 }
 
-                // Pace against the wall clock rather than relying on ffmpeg's -re,
-                // which does not throttle reliably when writing to a pipe.
-                DWORD now = GetTickCount();
-                if ((LONG)(nextFrameAt - now) > 0) Sleep(nextFrameAt - now);
-                nextFrameAt += framePeriodMs;
-                now = GetTickCount();
-                if ((LONG)(now - nextFrameAt) > 500) nextFrameAt = now;   // resync if we fell behind
+                DWORD now = pace.WaitForSlot();
 
                 if (!device.SendImageFrame(frame)) { ok = false; break; }
                 ++sent;
 
                 if (onFrame) onFrame(frame, frameUser);
 
-                if (now - lastKeepAlive >= kLiveKeepAliveMs) {
-                    device.SendCommand(cmd::Live);
-                    lastKeepAlive = now;
-                }
+                if (!pace.KeepAliveIfDue(device, now)) { ok = false; break; }
 
                 if ((sent % 30) == 0) {
-                    double secs = (now - startedAt) / 1000.0;
+                    double secs = (now - pace.startedAt) / 1000.0;
                     Log(LogLevel::Progress, L"%zu frames, %.1f fps, %zu dropped",
                         sent, secs > 0 ? sent / secs : 0.0, dropped);
                 }
@@ -109,7 +135,7 @@ namespace jl {
 
         } while (ok && resolved.loop && !aborted());
 
-        const double elapsed = (GetTickCount() - startedAt) / 1000.0;
+        const double elapsed = (GetTickCount() - pace.startedAt) / 1000.0;
 
         Log(LogLevel::Info, L"%zu frames sent over %zu pass(es)%s", sent, passes,
             dropped ? L", some dropped as oversized" : L"");

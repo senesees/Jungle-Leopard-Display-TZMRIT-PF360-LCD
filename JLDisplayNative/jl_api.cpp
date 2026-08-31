@@ -44,6 +44,12 @@ namespace {
         std::atomic<bool> abortItem{ false };
         std::atomic<bool> shuttingDown{ false };
 
+        // Read once by each worker as it starts, so changing the mode never
+        // disturbs an item already running. Atomic rather than under `cmd`
+        // because the host sets it from its UI thread whenever the user picks a
+        // different option.
+        std::atomic<int32_t> preprocess{ JL_PRE_OFF };
+
         // Worker input. Written under `cmd` before the thread starts, read only
         // by that thread, so it needs no lock of its own.
         std::wstring   itemPath;
@@ -167,6 +173,42 @@ namespace {
         ++g.frameCount;
     }
 
+    jl::Preprocess CurrentMode()
+    {
+        switch (g.preprocess.load()) {
+        case JL_PRE_MEMORY: return jl::Preprocess::Memory;
+        case JL_PRE_DISK:   return jl::Preprocess::Disk;
+        default:            return jl::Preprocess::Off;
+        }
+    }
+
+    // The tail every video path shares, whether its frames came from a pack or
+    // straight off ffmpeg's pipe.
+    void FinishPlayback(bool ok, const jl::PlaybackStats& stats)
+    {
+        {
+            // framesSent already counted live in OnFrame; taking it from stats
+            // too would be the same number, but dropped frames never reach
+            // OnFrame so they can only come from here.
+            Guard lock(g.state);
+            g.framesDropped = (int64_t)stats.dropped;
+            if (stats.fps > 0.0) g.fps = stats.fps;
+        }
+
+        if (ShouldAbort(nullptr)) return;
+
+        if (!ok) {
+            SetDeviceLost(L"playback stopped: the device or ffmpeg failed");
+            return;
+        }
+
+        // Reached the end on its own. A looping item only gets here if it was
+        // stopped, which the abort check above already returned for.
+        Guard lock(g.state);
+        ++g.finishedCount;
+        g.st = JL_STATE_IDLE;
+    }
+
     DWORD WINAPI WorkerProc(LPVOID)
     {
         jl::SetLogSink(WorkerLog, nullptr);   // per-thread; see jl_core.h
@@ -174,12 +216,13 @@ namespace {
         const std::wstring   path = g.itemPath;
         const ItemKind       kind = g.itemKind;
         jl::RenderOpts       opts = g.itemOpts;
+        const jl::Preprocess mode = CurrentMode();
 
         if (kind == ItemKind::Image) {
             SetState(JL_STATE_PREPARING);
 
             std::vector<uint8_t> jpeg;
-            if (!jl::PrepareImage(path, opts, jpeg)) {
+            if (!jl::PrepareImageCached(path, opts, mode, jpeg)) {
                 if (!ShouldAbort(nullptr)) SetState(JL_STATE_ERROR);
                 return 0;
             }
@@ -202,7 +245,9 @@ namespace {
         if (kind == ItemKind::Video) {
             // Resolve the quality separately from playing it, so the two states
             // are distinguishable: calibration can take a minute on a long file
-            // and the UI has to be able to say so.
+            // and the UI has to be able to say so. Doing it here rather than
+            // inside each path also means the pack builder and the streamer
+            // agree on the answer by construction.
             SetState(JL_STATE_CALIBRATING);
 
             const int quality = jl::ResolveQuality(path, opts, ShouldAbort, nullptr);
@@ -211,7 +256,34 @@ namespace {
                 SetState(JL_STATE_ERROR);
                 return 0;
             }
-            opts.quality = quality;   // PlayVideo now skips calibration entirely
+            opts.quality = quality;   // both paths now skip calibration entirely
+
+            // The pack has to outlive playback: PlayPack reads straight out of
+            // it, and for a disk pack that means straight out of the mapping.
+            jl::FramePack pack;
+
+            if (mode != jl::Preprocess::Off) {
+                SetState(JL_STATE_PREPROCESSING);
+
+                if (jl::GetPack(path, opts, mode, pack, ShouldAbort, nullptr, nullptr)) {
+                    if (ShouldAbort(nullptr)) return 0;
+
+                    SetState(JL_STATE_PLAYING);
+
+                    jl::PlaybackStats stats;
+                    bool ok = jl::PlayPack(g.device, pack, opts, ShouldAbort, nullptr,
+                        OnFrame, nullptr, &stats);
+
+                    FinishPlayback(ok, stats);
+                    return 0;
+                }
+
+                if (ShouldAbort(nullptr)) return 0;
+
+                // Could not be packed — over the memory budget, or the cache
+                // would not take it. GetPack has already said why; streaming
+                // still works, so fall through to it rather than failing.
+            }
 
             SetState(JL_STATE_PLAYING);
 
@@ -219,29 +291,7 @@ namespace {
             bool ok = jl::PlayVideo(g.device, path, opts, ShouldAbort, nullptr,
                 OnFrame, nullptr, &stats);
 
-            {
-                // framesSent already counted live in OnFrame; taking it from
-                // stats too would be the same number, but dropped frames never
-                // reach OnFrame so they can only come from here.
-                Guard lock(g.state);
-                g.framesDropped = (int64_t)stats.dropped;
-                if (stats.fps > 0.0) g.fps = stats.fps;
-            }
-
-            if (ShouldAbort(nullptr)) return 0;
-
-            if (!ok) {
-                SetDeviceLost(L"playback stopped: the device or ffmpeg failed");
-                return 0;
-            }
-
-            // Reached the end on its own. A looping item only gets here if it
-            // was stopped, which the abort check above already returned for.
-            {
-                Guard lock(g.state);
-                ++g.finishedCount;
-                g.st = JL_STATE_IDLE;
-            }
+            FinishPlayback(ok, stats);
             return 0;
         }
 
@@ -480,6 +530,47 @@ int32_t jl_get_last_frame(uint8_t* buf, int32_t cap)
     if (!buf || cap < need) return need;   // asking for the size, or too small
     memcpy(buf, g.lastFrame.data(), (size_t)need);
     return need;
+}
+
+void jl_set_preprocess(int32_t mode)
+{
+    // Anything unrecognised means Off. A host built against a later header must
+    // not be able to turn this into an unplayable state.
+    if (mode != JL_PRE_MEMORY && mode != JL_PRE_DISK) mode = JL_PRE_OFF;
+    g.preprocess.store(mode);
+}
+
+int32_t jl_get_preprocess(void)
+{
+    return g.preprocess.load();
+}
+
+void jl_set_pack_budgets(int64_t memoryBytes, int64_t diskBytes)
+{
+    // A negative figure is nonsense rather than "unlimited"; treat it as 0,
+    // which the core reads as "put the default back".
+    jl::SetMemoryBudget(memoryBytes > 0 ? (uint64_t)memoryBytes : 0);
+    jl::SetDiskBudget(diskBytes > 0 ? (uint64_t)diskBytes : 0);
+}
+
+int64_t jl_memory_budget(void)
+{
+    return (int64_t)jl::MemoryBudget();
+}
+
+int64_t jl_disk_budget(void)
+{
+    return (int64_t)jl::DiskBudget();
+}
+
+int64_t jl_pack_cache_bytes(void)
+{
+    return (int64_t)jl::PackCacheBytes();
+}
+
+void jl_pack_cache_clear(void)
+{
+    jl::PackCacheClear();
 }
 
 int32_t jl_ffmpeg_path(wchar_t* buf, int32_t cch)

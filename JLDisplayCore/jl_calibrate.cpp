@@ -31,25 +31,23 @@ namespace jl {
                 CacheGuard& operator=(const CacheGuard&) = delete;
             };
 
-            std::string Fnv1aHex(const std::string& s)
-            {
-                uint64_t h = 1469598103934665603ULL;
-                for (unsigned char c : s) { h ^= c; h *= 1099511628211ULL; }
-                char buf[17];
-                sprintf_s(buf, sizeof(buf), "%016llx", (unsigned long long)h);
-                return buf;
-            }
-
         }  // namespace
 
-        std::wstring CacheFilePath()
+        // Everything this library remembers between runs lives here: the
+        // calibration table, and the frame packs beside it.
+        std::wstring CacheDirectory()
         {
             wchar_t buf[MAX_PATH] = L"";
             DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
             std::wstring dir = (n > 0 && n < MAX_PATH) ? std::wstring(buf) : std::wstring(L".");
             dir += L"\\jl_display";
             CreateDirectoryW(dir.c_str(), nullptr);
-            return dir + L"\\calibration.txt";
+            return dir;
+        }
+
+        std::wstring CacheFilePath()
+        {
+            return CacheDirectory() + L"\\calibration.txt";
         }
 
         std::string CalibrationKey(const std::wstring& input, const std::wstring& filter,

@@ -10,6 +10,8 @@
 //     jl_display.exe --image frame.jpg --once        # send one frame and exit
 //     jl_display.exe --video clip.mp4                # play a video
 //     jl_display.exe --video clip.gif --loop         # loop it forever
+//     jl_display.exe --video clip.gif --loop --preprocess disk
+//                                                    # transcode once, then no ffmpeg
 //
 // Video calibration (picking a JPEG quality whose frames all fit the panel's
 // 80 KB limit) is cached in %LOCALAPPDATA%\\jl_display\\calibration.txt, keyed on
@@ -91,6 +93,9 @@ int main(int argc, char** argv)
     int  light = -1;
     bool info = false;
     bool once = false;
+    bool clearCache = false;
+    jl::Preprocess preprocess = jl::Preprocess::Off;
+    long long limitMB = 0;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -99,6 +104,14 @@ int main(int argc, char** argv)
         else if (a == "--stretch") opts.stretch = true;
         else if (a == "--loop")    opts.loop = true;
         else if (a == "--recalibrate") opts.recalibrate = true;
+        else if (a == "--preprocess" && i + 1 < argc) {
+            std::string m = argv[++i];
+            if (m == "memory")    preprocess = jl::Preprocess::Memory;
+            else if (m == "disk") preprocess = jl::Preprocess::Disk;
+            else                  preprocess = jl::Preprocess::Off;
+        }
+        else if (a == "--clear-cache") clearCache = true;
+        else if (a == "--limit" && i + 1 < argc) limitMB = atoll(argv[++i]);
         else if (a == "--hwaccel" && i + 1 < argc) opts.hwaccel = Widen(argv[++i]);
         else if (a == "--image" && i + 1 < argc) imagePath = Widen(argv[++i]);
         else if (a == "--video" && i + 1 < argc) videoPath = Widen(argv[++i]);
@@ -109,6 +122,22 @@ int main(int argc, char** argv)
         else if (a == "--port" && i + 1 < argc) port = Widen(argv[++i]);
     }
 
+    // Applied after the whole command line is read, so --limit works whichever
+    // side of --preprocess it lands on.
+    if (limitMB > 0) {
+        const uint64_t bytes = (uint64_t)limitMB * 1024 * 1024;
+        if (preprocess == jl::Preprocess::Disk) jl::SetDiskBudget(bytes);
+        else                                    jl::SetMemoryBudget(bytes);
+    }
+
+    // Clearing the cache touches no device, so it happens before the usage
+    // check and stands on its own as a complete job.
+    if (clearCache) {
+        jl::PackCacheClear();
+        printf("pack cache cleared\n");
+        if (!info && imagePath.empty() && videoPath.empty() && light < 0) return 0;
+    }
+
     if (!info && imagePath.empty() && videoPath.empty() && light < 0) {
         fprintf(stderr,
             "usage: %s [--port COMn] [--rotate 0|90|180|270] [--stretch]\n"
@@ -116,7 +145,9 @@ int main(int argc, char** argv)
             "         --light 0-100\n"
             "         --image FILE [--once]\n"
             "         --video FILE [--loop] [--fps N] [--quality 2-31]\n"
-            "                      [--recalibrate] [--hwaccel auto|d3d11va|cuda|qsv]\n",
+            "                      [--recalibrate] [--hwaccel auto|d3d11va|cuda|qsv]\n"
+            "                      [--preprocess none|memory|disk] [--limit MB]\n"
+            "         --clear-cache\n",
             argv[0]);
         return 1;
     }
@@ -131,7 +162,7 @@ int main(int argc, char** argv)
     // Prepare the frame BEFORE opening the port, so a bad image or a missing
     // ffmpeg doesn't leave the device sitting in live mode with nothing to show.
     std::vector<uint8_t> jpeg;
-    if (!imagePath.empty() && !jl::PrepareImage(imagePath, opts, jpeg))
+    if (!imagePath.empty() && !jl::PrepareImageCached(imagePath, opts, preprocess, jpeg))
         return 1;
 
     jl::Device device;
@@ -185,7 +216,19 @@ int main(int argc, char** argv)
         SetConsoleCtrlHandler(CtrlHandler, TRUE);
         printf("(Ctrl-C to stop)\n");
         jl::PlaybackStats stats;
-        jl::PlayVideo(device, videoPath, opts, ShouldAbort, nullptr, nullptr, nullptr, &stats);
+
+        // With preprocessing on, build the frames first and play them back with
+        // no ffmpeg in the loop. Anything that cannot be packed — too big for
+        // memory, no room on disk — falls through to streaming rather than
+        // refusing to play.
+        jl::FramePack pack;
+        if (preprocess != jl::Preprocess::Off &&
+            jl::GetPack(videoPath, opts, preprocess, pack, ShouldAbort, nullptr, nullptr)) {
+            jl::PlayPack(device, pack, opts, ShouldAbort, nullptr, nullptr, nullptr, &stats);
+        }
+        else if (!ShouldAbort(nullptr)) {
+            jl::PlayVideo(device, videoPath, opts, ShouldAbort, nullptr, nullptr, nullptr, &stats);
+        }
         ClearProgressLine();
     }
 

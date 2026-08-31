@@ -79,6 +79,46 @@
                            Foreground="{StaticResource TextDim}"
                            Text="Affects decoding only — the JPEG encode always runs on the CPU. Helps most on high-resolution sources."/>
 
+                <TextBlock Text="PREPROCESSING" Style="{StaticResource Heading}"/>
+
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Mode" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox x:Name="PreprocessBox" Grid.Column="1"
+                              SelectionChanged="OnPreprocessChanged">
+                        <ComboBoxItem><TextBlock Text="Off — transcode while playing" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="Memory — transcode once into RAM" Foreground="#1A1207"/></ComboBoxItem>
+                        <ComboBoxItem><TextBlock Text="Disk — transcode once, keep on disk" Foreground="#1A1207"/></ComboBoxItem>
+                    </ComboBox>
+                </Grid>
+
+                <Grid x:Name="BudgetRow" Margin="0,6,0,4" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="BudgetLabel" Grid.Column="0" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox x:Name="BudgetBox" Grid.Column="1"
+                              SelectionChanged="OnBudgetChanged"/>
+                </Grid>
+
+                <TextBlock x:Name="PreprocessHint" Margin="0,0,0,8" FontSize="11"
+                           TextWrapping="Wrap" Foreground="{StaticResource TextDim}"/>
+
+                <StackPanel x:Name="PackCachePanel" Orientation="Horizontal"
+                            Margin="0,0,0,14" Visibility="Collapsed">
+                    <TextBlock x:Name="PackCacheText" VerticalAlignment="Center"
+                               FontSize="11" Foreground="{StaticResource TextDim}"/>
+                    <Button Content="Clear" Style="{StaticResource Btn}"
+                            Margin="10,0,0,0" Click="OnClearPackCache"
+                            ToolTip="Delete every preprocessed file. They rebuild the next time an item plays."/>
+                </StackPanel>
+
                 <TextBlock Text="STARTUP" Style="{StaticResource Heading}"/>
 
                 <CheckBox x:Name="StartWithWindowsBox" Content="Start when I sign in"

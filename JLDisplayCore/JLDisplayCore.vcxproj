@@ -79,6 +79,7 @@
     <ClCompile Include="jl_device.cpp" />
     <ClCompile Include="jl_ffmpeg.cpp" />
     <ClCompile Include="jl_log.cpp" />
+    <ClCompile Include="jl_pack.cpp" />
     <ClCompile Include="jl_player.cpp" />
     <ClCompile Include="jl_util.cpp" />
   </ItemGroup>

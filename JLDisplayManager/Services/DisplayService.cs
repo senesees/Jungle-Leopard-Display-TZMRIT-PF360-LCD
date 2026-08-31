@@ -142,6 +142,7 @@ public sealed class DisplayService : INotifyPropertyChanged, IDisposable
         NativeMethods.JlState.Idle => Connected ? $"Connected on {Port} — idle" : "Not connected",
         NativeMethods.JlState.Preparing => $"Preparing {Current?.Name}…",
         NativeMethods.JlState.Calibrating => $"Calibrating {Current?.Name}…",
+        NativeMethods.JlState.Preprocessing => $"Preprocessing {Current?.Name}…",
         NativeMethods.JlState.Playing => Current is null ? "Playing" : $"Showing {Current.Name}",
         NativeMethods.JlState.Error => "Error",
         _ => "",
@@ -154,9 +155,32 @@ public sealed class DisplayService : INotifyPropertyChanged, IDisposable
     public void Start()
     {
         NativeMethods.VerifyLayout();
+        ApplyPreprocess();
         _poll.Start();
         Connect();
     }
+
+    /// <summary>
+    /// Pushes the preprocessing mode and both budgets down to the native
+    /// session. Takes effect on the next item started, so changing any of them
+    /// never disturbs what is playing.
+    /// </summary>
+    public void ApplyPreprocess()
+    {
+        NativeMethods.jl_set_preprocess((int)_settings.Preprocess);
+        NativeMethods.jl_set_pack_budgets(
+            _settings.MemoryBudgetMB * 1024L * 1024L,
+            _settings.DiskBudgetMB * 1024L * 1024L);
+    }
+
+    /// <summary>Bytes held by the on-disk pack cache.</summary>
+    public static long PackCacheBytes() => NativeMethods.jl_pack_cache_bytes();
+
+    /// <summary>
+    /// Empties the pack cache. Safe while something is playing — a pack already
+    /// mapped runs to the end of its item.
+    /// </summary>
+    public static void ClearPackCache() => NativeMethods.jl_pack_cache_clear();
 
     /// <summary>
     /// Opens the port. Failure is not exceptional — the panel is a USB device

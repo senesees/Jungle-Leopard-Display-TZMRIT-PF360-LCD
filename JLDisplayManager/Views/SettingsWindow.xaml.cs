@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 using JLDisplayManager.Models;
 using JLDisplayManager.Services;
@@ -15,6 +17,20 @@ public partial class SettingsWindow : Window
 {
     private static readonly string[] HwaccelValues =
         { "auto", "none", "cuda", "qsv", "d3d11va", "dxva2" };
+
+    /// <summary>
+    /// The dark ink the other combo boxes set inline in XAML. Items built in
+    /// code have to say it too, or they inherit the window's light foreground
+    /// and vanish against the dropdown's background.
+    /// </summary>
+    private static readonly Brush ComboText = FrozenInk();
+
+    private static Brush FrozenInk()
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(0x1A, 0x12, 0x07));
+        brush.Freeze();   // shared across every item, so it must not stay mutable
+        return brush;
+    }
 
     private readonly App _app = App.Current;
     private bool _loaded;
@@ -37,6 +53,9 @@ public partial class SettingsWindow : Window
 
         int hw = Array.IndexOf(HwaccelValues, s.Hwaccel);
         HwaccelBox.SelectedIndex = hw >= 0 ? hw : 0;
+
+        PreprocessBox.SelectedIndex = (int)s.Preprocess;
+        ShowPreprocessHint();
 
         // Read the real registered state rather than the stored flag: the task
         // can be removed from outside the app, and a checkbox that disagrees
@@ -104,6 +123,172 @@ public partial class SettingsWindow : Window
             : $"ffmpeg: {path}";
     }
 
+    /// <summary>
+    /// Roughly what a megabyte of preprocessed frames is worth in playing time.
+    /// A 960x480 frame lands around 40 KB, so 30 fps costs about 70 MB a minute
+    /// — close enough to make a limit mean something before you pick it.
+    /// </summary>
+    private const double MegabytesPerVideoMinute = 70.0;
+
+    private static readonly int[] MemoryPresetsMB = { 128, 256, 512, 1024, 2048, 4096 };
+
+    private static readonly int[] DiskPresetsMB =
+        { 1024, 2048, 4096, 8192, 16384, 32768, 65536 };
+
+    /// <summary>Suppresses the change handler while the list is being rebuilt.</summary>
+    private bool _populatingBudgets;
+
+    private static string FormatSize(int megabytes) =>
+        megabytes >= 1024 ? $"{megabytes / 1024} GB" : $"{megabytes} MB";
+
+    private static string PlayingTime(int megabytes)
+    {
+        double minutes = megabytes / MegabytesPerVideoMinute;
+        if (minutes < 1) return "under a minute";
+        if (minutes < 90) return $"about {Math.Round(minutes)} minutes";
+        return $"about {minutes / 60:0.#} hours";
+    }
+
+    /// <summary>
+    /// Rebuilds the limit list for the selected mode. Only one limit is ever
+    /// relevant — Off has none and the other two never apply at once — so this
+    /// is one control that changes meaning rather than two that sit half-unused.
+    /// </summary>
+    private void PopulateBudgets(PreprocessMode mode)
+    {
+        if (mode == PreprocessMode.Off)
+        {
+            BudgetRow.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        bool disk = mode == PreprocessMode.Disk;
+
+        BudgetLabel.Text = disk ? "Disk limit" : "Memory limit";
+        BudgetRow.Visibility = Visibility.Visible;
+
+        int current = disk ? _app.Settings.DiskBudgetMB : _app.Settings.MemoryBudgetMB;
+
+        // A value hand-edited into settings.json is kept as an option of its
+        // own rather than silently snapped to the nearest preset.
+        var choices = new List<int>(disk ? DiskPresetsMB : MemoryPresetsMB);
+        if (!choices.Contains(current))
+        {
+            choices.Add(current);
+            choices.Sort();
+        }
+
+        _populatingBudgets = true;
+        BudgetBox.Items.Clear();
+
+        foreach (int mb in choices)
+        {
+            BudgetBox.Items.Add(new ComboBoxItem
+            {
+                Content = new TextBlock
+                {
+                    Text = $"{FormatSize(mb)} — {PlayingTime(mb)} of video",
+                    Foreground = ComboText,
+                },
+            });
+        }
+
+        BudgetBox.SelectedIndex = choices.IndexOf(current);
+        _budgetChoices = choices;
+        _populatingBudgets = false;
+    }
+
+    private List<int> _budgetChoices = new();
+
+    /// <summary>
+    /// Says what the selected mode actually costs. The frame-rate caveat is
+    /// worth stating out loud: the rate is part of what a preprocessed frame is,
+    /// so changing it throws every stored one away.
+    /// </summary>
+    private void ShowPreprocessHint()
+    {
+        if (PreprocessHint is null) return;
+
+        var mode = (PreprocessMode)Math.Max(0, PreprocessBox.SelectedIndex);
+
+        PopulateBudgets(mode);
+
+        PreprocessHint.Text = mode switch
+        {
+            PreprocessMode.Memory =>
+                "ffmpeg runs once per item and then stops. Frames are held in memory and " +
+                "rebuilt each time the app starts. Anything that would not fit the limit " +
+                "falls back to streaming on its own, so raising it only widens what " +
+                "benefits — it never decides what will play.",
+            PreprocessMode.Disk =>
+                "ffmpeg runs once per item, ever. Roughly 70 MB per minute of video, " +
+                "evicted least-recently-used once the limit is reached. Changing rotation, " +
+                "stretch or frame rate rebuilds them.",
+            _ =>
+                "ffmpeg runs for as long as something is on the panel.",
+        };
+
+        PackCachePanel.Visibility = mode == PreprocessMode.Disk
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (mode == PreprocessMode.Disk) ShowPackCacheSize();
+    }
+
+    private void ShowPackCacheSize()
+    {
+        long bytes = DisplayService.PackCacheBytes();
+        string used = bytes < 1024L * 1024
+            ? "empty"
+            : $"{bytes / (1024.0 * 1024 * 1024):0.00} GB";
+
+        PackCacheText.Text = $"Cache: {used} of {FormatSize(_app.Settings.DiskBudgetMB)}";
+    }
+
+    private void OnPreprocessChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loaded) return;
+
+        // Applied as soon as it is picked rather than on close: the next item to
+        // start should already use it, and the hint below is about to describe
+        // behaviour the session is not yet in otherwise.
+        _app.Settings.Preprocess = (PreprocessMode)Math.Max(0, PreprocessBox.SelectedIndex);
+        _app.Display.ApplyPreprocess();
+        ShowPreprocessHint();
+    }
+
+    private void OnBudgetChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loaded || _populatingBudgets) return;
+
+        int index = BudgetBox.SelectedIndex;
+        if (index < 0 || index >= _budgetChoices.Count) return;
+
+        if (_app.Settings.Preprocess == PreprocessMode.Disk)
+        {
+            _app.Settings.DiskBudgetMB = _budgetChoices[index];
+            ShowPackCacheSize();
+
+            // Lowering the limit does not reclaim anything until the next pack
+            // is written, so say so rather than leaving a figure that looks
+            // like it is over the limit and being ignored.
+            if (DisplayService.PackCacheBytes() > _app.Settings.DiskBudgetMB * 1024L * 1024L)
+                PackCacheText.Text += " — trimmed as new items are added";
+        }
+        else
+        {
+            _app.Settings.MemoryBudgetMB = _budgetChoices[index];
+        }
+
+        _app.Display.ApplyPreprocess();
+    }
+
+    private void OnClearPackCache(object sender, RoutedEventArgs e)
+    {
+        DisplayService.ClearPackCache();
+        ShowPackCacheSize();
+    }
+
     private void OnFpsChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         // The slider's Minimum of 1 coerces its default value of 0 during XAML
@@ -168,6 +353,7 @@ public partial class SettingsWindow : Window
         s.Stretch = StretchBox.IsChecked == true;
         s.Fps = (int)Math.Round(FpsSlider.Value);
         s.Hwaccel = HwaccelValues[Math.Max(0, HwaccelBox.SelectedIndex)];
+        s.Preprocess = (PreprocessMode)Math.Max(0, PreprocessBox.SelectedIndex);
         s.StartMinimised = StartMinimisedBox.IsChecked == true;
         s.ResumeOnStart = ResumeBox.IsChecked == true;
 

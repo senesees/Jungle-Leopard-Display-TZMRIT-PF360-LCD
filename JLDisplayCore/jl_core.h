@@ -202,6 +202,132 @@ namespace jl {
         PlaybackStats* stats);
 
     // -----------------------------------------------------------------------
+    // Preprocessing
+    //
+    // Everything this panel accepts is a stream of 960x480 baseline 4:2:0
+    // JPEGs under kMaxJpegBytes, and what ffmpeg produces for a given source is
+    // a pure function of that source's bytes and the render options — which is
+    // exactly what the calibration cache already assumes. So the frames can be
+    // computed once and replayed, and ffmpeg need not run during playback at
+    // all.
+    //
+    // Off stays the fallback everywhere: a source too big for the memory
+    // budget, or a pack that cannot be written, degrades to streaming rather
+    // than failing.
+    // -----------------------------------------------------------------------
+
+    enum class Preprocess {
+        Off = 0,      // transcode continuously while playing, as this always did
+        Memory = 1,   // transcode once into RAM, then let ffmpeg exit
+        Disk = 2      // transcode once into a pack file, reused across runs
+    };
+
+    // How much either mode is allowed to use. Both are settable at runtime —
+    // what counts as reasonable depends entirely on the machine, and a limit
+    // baked into the binary is a limit nobody can fix.
+    //
+    // Memory mode refuses a source that would exceed its budget, and says so,
+    // which the caller turns back into streaming. Disk packs are instead
+    // evicted least-recently-used to stay under theirs, so a full cache slows
+    // the next play down rather than failing it.
+    constexpr uint64_t kDefaultMemoryBudget = 512ull * 1024 * 1024;   // ~7 min of video
+    constexpr uint64_t kDefaultDiskBudget = 8ull * 1024 * 1024 * 1024;
+
+    // Below these, a budget is too small to hold anything useful and every item
+    // would fall back to streaming — which is what Off is for. Anything lower is
+    // raised to the floor rather than honoured.
+    constexpr uint64_t kMinMemoryBudget = 32ull * 1024 * 1024;
+    constexpr uint64_t kMinDiskBudget = 128ull * 1024 * 1024;
+
+    // 0 restores the default. The memory budget applies to the next pack built;
+    // the disk budget is enforced the next time one is written.
+    void     SetMemoryBudget(uint64_t bytes);
+    void     SetDiskBudget(uint64_t bytes);
+    uint64_t MemoryBudget();
+    uint64_t DiskBudget();
+
+    struct PackStats {
+        size_t frames = 0;          // frames in playback order
+        size_t uniqueFrames = 0;    // distinct frames actually stored
+        size_t bytes = 0;
+        double buildSeconds = 0.0;  // 0 when it came straight from the cache
+        bool   fromCache = false;
+    };
+
+    // A built sequence of panel-ready frames.
+    //
+    // A memory pack owns its bytes. A disk pack maps its file, so the pages stay
+    // under the OS's control rather than being read wholesale into the process —
+    // which is what makes a 350 MB pack of a five-minute video reasonable.
+    //
+    // Frame pointers stay valid until Close(), so the pack must outlive any
+    // playback reading from it.
+    class FramePack {
+    public:
+        struct Ref { uint64_t offset; uint32_t length; };
+
+        FramePack() = default;
+        ~FramePack();
+
+        FramePack(const FramePack&) = delete;
+        FramePack& operator=(const FramePack&) = delete;
+
+        bool   IsOpen() const { return base_ != nullptr && !index_.empty(); }
+        int    Fps() const { return fps_; }
+        size_t FrameCount() const { return index_.size(); }
+        size_t Bytes() const { return bytes_; }
+
+        // The bytes of frame `i`, or nullptr past the end.
+        const uint8_t* Frame(size_t i, size_t& len) const;
+
+        void Close();
+
+        // Filled in by GetPack. Public only because the builder lives in another
+        // translation unit; callers have no reason to touch either.
+        void AdoptMemory(std::vector<uint8_t>&& blob, std::vector<Ref>&& index, int fps);
+        bool AdoptFile(const std::wstring& path);
+
+    private:
+        std::vector<uint8_t> owned_;                 // memory mode
+        HANDLE               file_ = INVALID_HANDLE_VALUE;
+        HANDLE               mapping_ = nullptr;
+        const uint8_t*       view_ = nullptr;        // disk mode
+        const uint8_t*       base_ = nullptr;        // whichever is in use
+        std::vector<Ref>     index_;
+        int                  fps_ = 30;
+        size_t               bytes_ = 0;
+    };
+
+    // Produces a pack for `path`: loaded from the disk cache when `mode` is Disk
+    // and a valid one is already there, otherwise built by running ffmpeg once
+    // to completion. Calibrates first when opts.quality is 0, exactly as
+    // playback would, so packed frames are byte-for-byte what streaming sends.
+    //
+    // False means "fall back to streaming" — over the memory budget, ffmpeg
+    // failed, or `abort` fired. Blocking, and building a long video takes a
+    // while; it reports throughout at the Progress log level.
+    bool GetPack(const std::wstring& path, const RenderOpts& opts, Preprocess mode,
+        FramePack& pack, AbortFn abort, void* abortUser, PackStats* stats);
+
+    // Plays a built pack, pacing and holding live mode exactly as PlayVideo
+    // does. No child process is involved.
+    bool PlayPack(Device& device, const FramePack& pack, const RenderOpts& opts,
+        AbortFn abort, void* abortUser,
+        FrameFn onFrame, void* frameUser,
+        PlaybackStats* stats);
+
+    // PrepareImage with the answer remembered, so a still in a playlist is
+    // transcoded once rather than once per rotation. Off transcodes every time.
+    bool PrepareImageCached(const std::wstring& path, const RenderOpts& opts,
+        Preprocess mode, std::vector<uint8_t>& jpeg);
+
+    // Size of the on-disk pack cache, and a way to empty it. Both are safe to
+    // call while something is playing; a mapped pack survives its file being
+    // deleted underneath it.
+    uint64_t PackCacheBytes();
+    void     PackCacheClear();
+
+    // -----------------------------------------------------------------------
     // ffmpeg
     // -----------------------------------------------------------------------
 

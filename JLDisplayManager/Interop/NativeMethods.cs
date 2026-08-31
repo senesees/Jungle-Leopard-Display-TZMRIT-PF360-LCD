@@ -23,6 +23,19 @@ public static class NativeMethods
         Calibrating = 3,
         Playing = 4,
         Error = 5,
+        Preprocessing = 6,
+    }
+
+    /// <summary>
+    /// Mirrors JlPreprocess: how much of the transcoding happens before playback
+    /// rather than during it. Session-wide, and deliberately not part of
+    /// <see cref="JlRenderOpts"/> — it changes nothing about the pixels.
+    /// </summary>
+    public enum JlPreprocess
+    {
+        Off = 0,
+        Memory = 1,
+        Disk = 2,
     }
 
     public const int JL_OK = 0;
@@ -95,6 +108,27 @@ public static class NativeMethods
 
     [DllImport(Dll)]
     public static extern int jl_get_last_frame(byte[]? buf, int cap);
+
+    [DllImport(Dll)]
+    public static extern void jl_set_preprocess(int mode);
+
+    [DllImport(Dll)]
+    public static extern int jl_get_preprocess();
+
+    [DllImport(Dll)]
+    public static extern void jl_set_pack_budgets(long memoryBytes, long diskBytes);
+
+    [DllImport(Dll)]
+    public static extern long jl_memory_budget();
+
+    [DllImport(Dll)]
+    public static extern long jl_disk_budget();
+
+    [DllImport(Dll)]
+    public static extern long jl_pack_cache_bytes();
+
+    [DllImport(Dll)]
+    public static extern void jl_pack_cache_clear();
 
     [DllImport(Dll, CharSet = CharSet.Unicode)]
     public static extern int jl_ffmpeg_path(StringBuilder buf, int cch);

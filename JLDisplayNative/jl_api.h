@@ -35,9 +35,20 @@ extern "C" {
         JL_STATE_PREPARING = 2,   // transcoding a still
         JL_STATE_CALIBRATING = 3,   // surveying a video for a safe quality
         JL_STATE_PLAYING = 4,   // pushing frames, or holding a still
-        JL_STATE_ERROR = 5    // see JlStatus::error
+        JL_STATE_ERROR = 5,   // see JlStatus::error
+        JL_STATE_PREPROCESSING = 6    // building panel-ready frames up front
     };
 
+
+    // How much work is done before playback starts rather than during it.
+    // Session-wide rather than per item, and deliberately NOT part of
+    // JlRenderOpts: it changes nothing about the pixels, so it must not feed
+    // the calibration or pack keys.
+    enum JlPreprocess {
+        JL_PRE_OFF = 0,      // transcode continuously while playing
+        JL_PRE_MEMORY = 1,   // transcode once into RAM, then let ffmpeg exit
+        JL_PRE_DISK = 2      // transcode once into a file, reused across runs
+    };
     // Return codes. Negative is failure; jl_get_status carries the detail.
     enum JlResult {
         JL_OK = 0,
@@ -130,6 +141,38 @@ extern "C" {
     // on screen. Returns the byte count, or the size needed when `cap` is too
     // small, or 0 when there is no frame. Pass buf=NULL to ask for the size.
     JLAPI int32_t jl_get_last_frame(uint8_t* buf, int32_t cap);
+
+    // -----------------------------------------------------------------------
+    // Preprocessing
+    // -----------------------------------------------------------------------
+
+    // Takes effect on the next item started; anything already playing carries
+    // on as it began. Off is the original behaviour and the fallback whenever a
+    // pack cannot be built — a source over the memory budget, a cache that
+    // cannot be written — so this never turns a playable item into a failure.
+    JLAPI void jl_set_preprocess(int32_t mode);
+
+    JLAPI int32_t jl_get_preprocess(void);
+
+    // How much each mode may use, in bytes. Pass 0 for either to restore its
+    // default (512 MB in memory, 8 GB on disk); anything below the floor the
+    // core considers usable is raised to it, so read the values back rather
+    // than assuming what was set is what took effect.
+    //
+    // The memory figure applies to the next pack built. The disk figure is
+    // enforced the next time one is written, so lowering it does not delete
+    // anything until then — use jl_pack_cache_clear to reclaim the space now.
+    JLAPI void    jl_set_pack_budgets(int64_t memoryBytes, int64_t diskBytes);
+    JLAPI int64_t jl_memory_budget(void);
+    JLAPI int64_t jl_disk_budget(void);
+
+    // Bytes currently held by the on-disk pack cache, and a way to empty it.
+    // Clearing is safe while something is playing: a pack already mapped keeps
+    // running to the end of its item.
+    JLAPI int64_t jl_pack_cache_bytes(void);
+    JLAPI void    jl_pack_cache_clear(void);
+
+    // -----------------------------------------------------------------------
 
     // Writes the resolved ffmpeg.exe path. JL_OK if present. Worth calling once
     // at startup: without ffmpeg every non-conforming item fails identically.

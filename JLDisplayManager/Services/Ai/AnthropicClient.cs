@@ -35,25 +35,32 @@ public sealed class AnthropicClient : ILlmClient
 
     public AnthropicClient(AiSettings ai) => _ai = ai;
 
-    public async Task<string> EnhanceAsync(string systemPrompt, string seed, CancellationToken ct)
+    public async Task<string> CompleteAsync(string systemPrompt, string userMessage,
+        CompletionOptions? options, CancellationToken ct)
     {
         var endpoint = _ai.Anthropic;
+        options ??= CompletionOptions.Default;
 
-        if (string.IsNullOrWhiteSpace(endpoint.Model))
+        string model = !string.IsNullOrWhiteSpace(options.Model) ? options.Model : endpoint.Model;
+
+        if (string.IsNullOrWhiteSpace(model))
             throw new LlmException("no Claude model is set");
         if (!endpoint.HasApiKey)
             throw new LlmException("no Anthropic API key is set");
 
         var body = new JsonObject
         {
-            ["model"] = endpoint.Model,
-            ["max_tokens"] = _ai.MaxTokens,
+            ["model"] = model.Trim(),
+            ["max_tokens"] = options.MaxTokens ?? _ai.MaxTokens,
             ["system"] = systemPrompt,
             ["messages"] = new JsonArray
             {
-                new JsonObject { ["role"] = "user", ["content"] = seed },
+                new JsonObject { ["role"] = "user", ["content"] = userMessage },
             },
         };
+
+        // Temperature stays unsent whatever the caller asks for: models from
+        // Opus 4.6 onwards reject it outright with a 400. See the class remarks.
 
         var response = await SendAsync(HttpMethod.Post, "v1/messages", body, ct).ConfigureAwait(false);
 

@@ -539,6 +539,52 @@ public sealed class AiSettings : INotifyPropertyChanged
     }
 
     // -----------------------------------------------------------------------
+    // Overlay generation
+    //
+    // Shares the provider, address and key above — there is one endpoint and no
+    // reason to configure it twice — but not the tuning. Writing structured
+    // layer JSON is a different job from writing a one-line image prompt: it is
+    // far longer, wants a colder temperature, and may deserve a stronger model.
+    // -----------------------------------------------------------------------
+
+    private string _overlayModel = "";
+    private int _overlayMaxTokens = 2000;
+    private double _overlayTemperature = 0.4;
+
+    /// <summary>
+    /// A model to use for overlays instead of the one configured above. Empty
+    /// means use that one — which is the right default, and the only setting
+    /// most people will ever need.
+    /// </summary>
+    public string OverlayModel
+    {
+        get => _overlayModel;
+        set => Set(ref _overlayModel, value ?? "");
+    }
+
+    /// <summary>
+    /// Bigger than the prompt budget by a wide margin: twenty layers of JSON is
+    /// nothing like one line of prose, and a model cut off mid-object produces
+    /// an unparseable answer rather than a shorter one.
+    /// </summary>
+    public int OverlayMaxTokens
+    {
+        get => _overlayMaxTokens;
+        set => Set(ref _overlayMaxTokens, Math.Clamp(value, 256, 16384));
+    }
+
+    /// <summary>
+    /// Colder than image prompts want. There is a right answer here and
+    /// invention is not a virtue — though not zero, so that "try again" on a
+    /// layout you did not like returns something different.
+    /// </summary>
+    public double OverlayTemperature
+    {
+        get => _overlayTemperature;
+        set => Set(ref _overlayTemperature, Math.Clamp(value, 0.0, 2.0));
+    }
+
+    // -----------------------------------------------------------------------
     // Pipeline
     // -----------------------------------------------------------------------
 

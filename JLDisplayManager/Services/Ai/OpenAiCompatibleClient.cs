@@ -28,9 +28,11 @@ public sealed class OpenAiCompatibleClient : ILlmClient
 
     public OpenAiCompatibleClient(AiSettings ai) => _ai = ai;
 
-    public async Task<string> EnhanceAsync(string systemPrompt, string seed, CancellationToken ct)
+    public async Task<string> CompleteAsync(string systemPrompt, string userMessage,
+        CompletionOptions? options, CancellationToken ct)
     {
         var endpoint = _ai.OpenAi;
+        options ??= CompletionOptions.Default;
 
         if (string.IsNullOrWhiteSpace(endpoint.BaseUrl))
             throw new LlmException("no LLM address is set");
@@ -40,18 +42,20 @@ public sealed class OpenAiCompatibleClient : ILlmClient
             ["messages"] = new JsonArray
             {
                 new JsonObject { ["role"] = "system", ["content"] = systemPrompt },
-                new JsonObject { ["role"] = "user", ["content"] = seed },
+                new JsonObject { ["role"] = "user", ["content"] = userMessage },
             },
-            ["max_tokens"] = _ai.MaxTokens,
-            ["temperature"] = _ai.Temperature,
+            ["max_tokens"] = options.MaxTokens ?? _ai.MaxTokens,
+            ["temperature"] = options.Temperature ?? _ai.Temperature,
             ["stream"] = false,
         };
 
-        // Left out entirely when the box is empty. A single-model runner
-        // like llama-server serves whatever it was started with and ignores
-        // this field, so naming a model there is at best noise and at worst
-        // a stale path that says something untrue about what answered.
-        if (!string.IsNullOrWhiteSpace(endpoint.Model)) body["model"] = endpoint.Model.Trim();
+        // A per-call override wins, then the configured model. Left out entirely
+        // when both are empty: a single-model runner like llama-server serves
+        // whatever it was started with and ignores this field, so naming a model
+        // there is at best noise and at worst a stale path that says something
+        // untrue about what answered.
+        string model = !string.IsNullOrWhiteSpace(options.Model) ? options.Model : endpoint.Model;
+        if (!string.IsNullOrWhiteSpace(model)) body["model"] = model.Trim();
 
         // Two spellings of the same request, because which one an endpoint
         // understands depends on what it is: llama.cpp and recent OpenAI take

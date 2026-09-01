@@ -154,11 +154,7 @@ public sealed class PromptEnhancer : IDisposable
 
         _client?.Dispose();
         _clientProvider = _ai.Provider;
-        _client = _ai.Provider switch
-        {
-            LlmProvider.Anthropic => new AnthropicClient(_ai),
-            _ => new OpenAiCompatibleClient(_ai),
-        };
+        _client = LlmClientFactory.Create(_ai, _ai.Provider);
 
         return _client;
     }

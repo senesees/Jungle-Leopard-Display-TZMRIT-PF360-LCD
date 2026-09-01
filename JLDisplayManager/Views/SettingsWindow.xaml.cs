@@ -76,6 +76,10 @@ public partial class SettingsWindow : Window
         BlankOnExitBox.IsChecked = s.BlankOnExit;
         PortBox.Text = s.Port;
 
+        LhmBox.IsChecked = s.UseLibreHardwareMonitor;
+        HwInfoBox.IsChecked = s.UseHwInfo;
+
+        ShowSensorState();
         ShowDeviceInfo();
         ShowFfmpegState();
     }
@@ -319,6 +323,58 @@ public partial class SettingsWindow : Window
         _app.Settings.StartWithWindows = StartWithWindowsBox.IsChecked == true;
     }
 
+    // -----------------------------------------------------------------------
+    // Sensors
+    // -----------------------------------------------------------------------
+
+    private void OnSensorSourceChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_loaded) return;
+
+        _app.Settings.UseLibreHardwareMonitor = LhmBox.IsChecked == true;
+        _app.Settings.UseHwInfo = HwInfoBox.IsChecked == true;
+        ShowSensorState();
+    }
+
+    /// <summary>
+    /// Says which source is actually answering, and — the part that matters —
+    /// says so plainly when none is. A CPU temperature layer that reads "--"
+    /// looks like a broken app rather than a missing helper, and this is the one
+    /// place that can explain the difference.
+    /// </summary>
+    private void ShowSensorState()
+    {
+        var registry = _app.Overlay?.Sensors;
+
+        if (registry == null)
+        {
+            SensorStatusText.Text = "";
+            return;
+        }
+
+        var live = new List<string>();
+        foreach (Services.Sensors.ISensorProvider p in registry.Providers)
+            if (p.Available && (p.Name.StartsWith("Libre") || p.Name.StartsWith("HWiNFO")))
+                live.Add(p.Name);
+
+        bool haveTemp = registry.Snapshot()["cpu.temp"].Available;
+
+        if (haveTemp)
+        {
+            SensorStatusText.Foreground = (Brush)FindResource("TextDim");
+            SensorStatusText.Text = $"Reading from {string.Join(" and ", live)}. "
+                                    + "CPU temperature is available.";
+            return;
+        }
+
+        SensorStatusText.Foreground = (Brush)FindResource("Accent");
+        SensorStatusText.Text = live.Count > 0
+            ? $"{string.Join(" and ", live)} is running but is not reporting a CPU "
+              + "temperature yet."
+            : "Neither is running, so CPU temperature, fan speeds and coolant "
+              + "temperature are unavailable. Changes here take effect next launch.";
+    }
+
     private void OnReleaseDevice(object sender, RoutedEventArgs e)
     {
         _app.Player.Stop();
@@ -366,6 +422,9 @@ public partial class SettingsWindow : Window
         s.AutoReconnect = AutoReconnectBox.IsChecked == true;
         s.BlankOnExit = BlankOnExitBox.IsChecked == true;
         s.Port = PortBox.Text.Trim();
+
+        s.UseLibreHardwareMonitor = LhmBox.IsChecked == true;
+        s.UseHwInfo = HwInfoBox.IsChecked == true;
 
         Storage.SaveSettings(s);
     }

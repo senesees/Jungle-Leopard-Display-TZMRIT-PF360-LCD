@@ -153,6 +153,43 @@ public sealed class AppSettings : INotifyPropertyChanged
         set => Set(ref _blankOnExit, value);
     }
 
+    // -----------------------------------------------------------------------
+    // Optional sensor sources
+    //
+    // Windows cannot report CPU temperature on its own — on AMD it lives behind
+    // the SMU and needs ring-0 access, which is why LibreHardwareMonitor ships a
+    // kernel driver. Rather than shipping one too, this reads what a monitor the
+    // user already runs has already measured.
+    // -----------------------------------------------------------------------
+
+    private bool _useLibreHardwareMonitor = true;
+    private int _libreHardwareMonitorPort = 8085;
+    private bool _useHwInfo = true;
+
+    /// <summary>
+    /// Read from LibreHardwareMonitor's web server, if it is running. On by
+    /// default and harmless when it is not: the provider reports nothing and the
+    /// sensors stay unavailable.
+    /// </summary>
+    public bool UseLibreHardwareMonitor
+    {
+        get => _useLibreHardwareMonitor;
+        set => Set(ref _useLibreHardwareMonitor, value);
+    }
+
+    public int LibreHardwareMonitorPort
+    {
+        get => _libreHardwareMonitorPort;
+        set => Set(ref _libreHardwareMonitorPort, Math.Clamp(value, 1, 65535));
+    }
+
+    /// <summary>Read HWiNFO's shared memory, if it is enabled there.</summary>
+    public bool UseHwInfo
+    {
+        get => _useHwInfo;
+        set => Set(ref _useHwInfo, value);
+    }
+
     private static int Normalise(int degrees)
     {
         int d = ((degrees % 360) + 360) % 360;
@@ -199,9 +236,22 @@ public static class Storage
     /// <summary>Where the AI pipeline writes what it generates.</summary>
     public static string GeneratedDirectory { get; } = Path.Combine(Directory, "generated");
 
+    /// <summary>
+    /// Images an overlay draws. Files are copied in when added, so a profile
+    /// keeps working when the original is moved or deleted.
+    /// </summary>
+    public static string OverlayAssetDirectory { get; } = Path.Combine(Directory, "overlay-assets");
+
     private static string SettingsPath => Path.Combine(Directory, "settings.json");
     private static string LibraryPath => Path.Combine(Directory, "library.json");
     private static string AiPath => Path.Combine(Directory, "ai.json");
+
+    /// <summary>
+    /// Overlay profiles live apart from settings.json so one can be exported,
+    /// shared or imported without dragging everything else along.
+    /// </summary>
+    private static string OverlayPath => Path.Combine(Directory, "overlays.json");
+
     public static string LogPath => Path.Combine(Directory, "manager.log");
 
     private static readonly JsonSerializerOptions Json = new()
@@ -216,6 +266,7 @@ public static class Storage
         System.IO.Directory.CreateDirectory(ThumbnailDirectory);
         System.IO.Directory.CreateDirectory(DownloadDirectory);
         System.IO.Directory.CreateDirectory(GeneratedDirectory);
+        System.IO.Directory.CreateDirectory(OverlayAssetDirectory);
     }
 
     public static AppSettings LoadSettings() => Load<AppSettings>(SettingsPath) ?? new AppSettings();
@@ -233,6 +284,33 @@ public static class Storage
 
         return ai;
     }
+
+    /// <summary>
+    /// Overlay profiles. A first run — or a file so damaged it will not parse —
+    /// comes back with one usable profile rather than an empty panel and no way
+    /// to discover the feature.
+    /// </summary>
+    public static Overlay.OverlaySettings LoadOverlays()
+    {
+        var o = Load<Overlay.OverlaySettings>(OverlayPath) ?? new Overlay.OverlaySettings();
+
+        if (o.Profiles.Count == 0)
+        {
+            o.Profiles.Add(Overlay.OverlaySettings.CreateDefault());
+            o.ActiveProfileId = o.Profiles[0].Id;
+        }
+
+        // Anything generated before themes existed has its colours baked in and
+        // would ignore a theme entirely. Converting the known old values to
+        // roles is invisible under the default theme and is what makes the
+        // picker do something on a profile made yesterday.
+        int migrated = Overlay.OverlaySettings.MigrateToRoles(o);
+        if (migrated > 0) Log($"overlay: moved {migrated} colour(s) onto the theme");
+
+        return o;
+    }
+
+    public static void SaveOverlays(Overlay.OverlaySettings o) => Save(OverlayPath, o);
 
     public static void SaveSettings(AppSettings s) => Save(SettingsPath, s);
 

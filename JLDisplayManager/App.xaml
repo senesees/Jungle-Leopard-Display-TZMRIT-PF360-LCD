@@ -188,6 +188,52 @@
                 <Setter Property="CaretBrush" Value="{StaticResource Accent}"/>
             </Style>
 
+            <!-- A tooltip's content string is rendered through a generated
+                 TextBlock, which picks up the implicit style above and comes out
+                 near-white — on the system's near-white tooltip chrome, which is
+                 invisible. Setting Foreground on the ToolTip does not help: that
+                 explicit setter beats the inherited value, the same trap the
+                 ComboBox has below.
+
+                 So the whole thing is templated dark, and the TextBlock style
+                 inside the template names its colour rather than inheriting one,
+                 which is what actually makes it stick. -->
+            <Style TargetType="ToolTip">
+                <Setter Property="Background" Value="{StaticResource BgRaised}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="{StaticResource Text}"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="Padding" Value="8,5"/>
+                <!-- The default drop shadow is drawn by the system chrome this
+                     template replaces, and leaves a grey halo without it. -->
+                <Setter Property="HasDropShadow" Value="False"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToolTip">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="4"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter>
+                                    <ContentPresenter.Resources>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground"
+                                                    Value="{StaticResource Text}"/>
+                                            <Setter Property="FontSize" Value="11"/>
+                                            <Setter Property="TextWrapping" Value="Wrap"/>
+                                            <Setter Property="MaxWidth" Value="320"/>
+                                        </Style>
+                                    </ContentPresenter.Resources>
+                                </ContentPresenter>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <!-- The ComboBox keeps its system-drawn light chrome, so its text
                  has to be dark. That fights the implicit TextBlock style above,
                  which wins over inherited Foreground inside a control template

@@ -146,6 +146,27 @@
                            Foreground="{StaticResource TextDim}"
                            Text="Off leaves the last frame frozen on the glass after the app closes."/>
 
+                <TextBlock Text="SENSORS" Style="{StaticResource Heading}"/>
+
+                <TextBlock Margin="0,0,0,8" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="Windows cannot measure CPU temperature by itself — on AMD it sits behind the SMU and needs a kernel driver. Run either of these and the overlay can read what it already measures, along with fan speeds, coolant temperature and motherboard sensors."/>
+
+                <CheckBox x:Name="LhmBox" Content="LibreHardwareMonitor"
+                          Checked="OnSensorSourceChanged" Unchecked="OnSensorSourceChanged"/>
+                <TextBlock Margin="24,0,0,8" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="Needs its web server switched on: Options → Remote Web Server → Run."/>
+
+                <CheckBox x:Name="HwInfoBox" Content="HWiNFO"
+                          Checked="OnSensorSourceChanged" Unchecked="OnSensorSourceChanged"/>
+                <TextBlock Margin="24,0,0,8" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextDim}"
+                           Text="Needs Shared Memory Support enabled in its settings."/>
+
+                <TextBlock x:Name="SensorStatusText" TextWrapping="Wrap" FontSize="11"
+                           Margin="0,2,0,14"/>
+
                 <TextBlock Text="DEVICE" Style="{StaticResource Heading}"/>
 
                 <Grid Margin="0,0,0,8">

@@ -6,9 +6,12 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Forms;
 
+using JLDisplayManager.Interop;
 using JLDisplayManager.Models;
+using JLDisplayManager.Models.Overlay;
 using JLDisplayManager.Services;
 using JLDisplayManager.Services.Ai;
+using JLDisplayManager.Services.Overlay;
 using JLDisplayManager.Views;
 
 using Application = System.Windows.Application;
@@ -39,13 +42,16 @@ public partial class App : Application
     private ToolStripLabel? _trayAiStatus;
     private ToolStripMenuItem? _trayPlaylistItem;
     private ToolStripMenuItem? _trayAiItem;
+    private ToolStripMenuItem? _trayOverlayItem;
 
     public AppSettings Settings { get; private set; } = new();
     public AppLibrary Library { get; private set; } = new();
     public AiSettings Ai { get; private set; } = new();
+    public OverlaySettings Overlays { get; private set; } = new();
     public DisplayService Display { get; private set; } = null!;
     public PlaylistPlayer Player { get; private set; } = null!;
     public AiPipeline Pipeline { get; private set; } = null!;
+    public OverlayService Overlay { get; private set; } = null!;
 
     public static new App Current => (App)Application.Current;
 
@@ -100,6 +106,7 @@ public partial class App : Application
         Settings = Storage.LoadSettings();
         Library = Storage.LoadLibrary();
         Ai = Storage.LoadAi();
+        Overlays = Storage.LoadOverlays();
 
         try
         {
@@ -107,6 +114,12 @@ public partial class App : Application
             Player = new PlaylistPlayer(Display, Library);
             Pipeline = new AiPipeline(Ai, Library, Display);
             Display.Start();
+
+            // After Display.Start(), so the native session exists before the
+            // renderer starts pushing surfaces at it.
+            Overlay = new OverlayService(
+                () => Display.State == NativeMethods.JlState.Playing, Settings);
+            Overlay.Start(Overlays);
         }
         catch (Exception ex)
         {
@@ -233,6 +246,14 @@ public partial class App : Application
         menu.Items.Add(_trayAiItem);
         menu.Items.Add("Stop", null, (_, _) => StopAll());
         menu.Items.Add(new ToolStripSeparator());
+
+        // The overlay is a thing people turn on and off and switch between far
+        // more often than they edit, so it earns a tray entry rather than
+        // living only behind the editor window.
+        _trayOverlayItem = new ToolStripMenuItem("Overlay");
+        menu.Items.Add(_trayOverlayItem);
+
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitApp());
 
         // Refreshed on open as well as on change: the menu is not visible most
@@ -288,6 +309,8 @@ public partial class App : Application
         if (_trayPlaylistItem is not null)
             _trayPlaylistItem.Text = Player.Running ? "Stop playlist" : "Play playlist";
 
+        RebuildOverlayMenu();
+
         if (_trayAiItem is not null)
             _trayAiItem.Text = Pipeline.Running ? "Stop AI slideshow" : "Start AI slideshow";
     }
@@ -317,6 +340,54 @@ public partial class App : Application
         _window.Topmost = false;
     }
 
+    /// <summary>
+    /// The overlay submenu: an on/off toggle, the profiles, and a way into the
+    /// editor. Rebuilt each time the menu opens rather than kept in sync,
+    /// because profiles can be added and renamed while it is closed.
+    /// </summary>
+    private void RebuildOverlayMenu()
+    {
+        if (_trayOverlayItem is null || Overlay is null) return;
+
+        _trayOverlayItem.DropDownItems.Clear();
+
+        var toggle = new ToolStripMenuItem(
+            Overlay.Enabled ? "Turn overlay off" : "Turn overlay on",
+            null,
+            (_, _) =>
+            {
+                Overlay.SetEnabled(!Overlay.Enabled);
+                Storage.SaveOverlays(Overlays);
+                UpdateTray();
+            });
+        _trayOverlayItem.DropDownItems.Add(toggle);
+        _trayOverlayItem.DropDownItems.Add(new ToolStripSeparator());
+
+        Guid? active = Overlay.Profile?.Id;
+        foreach (OverlayProfile p in Overlays.Profiles)
+        {
+            OverlayProfile captured = p;
+            var item = new ToolStripMenuItem(p.Name, null, (_, _) =>
+            {
+                Overlays.ActiveProfileId = captured.Id;
+                Overlay.Refresh(captured);
+                Storage.SaveOverlays(Overlays);
+                UpdateTray();
+            })
+            {
+                Checked = p.Id == active,
+            };
+            _trayOverlayItem.DropDownItems.Add(item);
+        }
+
+        _trayOverlayItem.DropDownItems.Add(new ToolStripSeparator());
+        _trayOverlayItem.DropDownItems.Add("Edit…", null, (_, _) =>
+        {
+            ShowWindow();
+            _window?.OpenOverlayEditor();
+        });
+    }
+
     /// <summary>The only path that actually ends the process.</summary>
     public void ExitApp()
     {
@@ -324,6 +395,11 @@ public partial class App : Application
 
         Pipeline.Dispose();
         Player.Stop();
+
+        // Before Display: the renderer pushes into the native session, so it
+        // has to stop while that session is still there.
+        Overlay?.Dispose();
+
         if (Settings.BlankOnExit) Display.Stop();
         Display.Dispose();
 
@@ -346,6 +422,7 @@ public partial class App : Application
         Storage.SaveSettings(Settings);
         Storage.SaveLibrary(Library);
         Storage.SaveAi(Ai);
+        Storage.SaveOverlays(Overlays);
     }
 
     protected override void OnExit(ExitEventArgs e)

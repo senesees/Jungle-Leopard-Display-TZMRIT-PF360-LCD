@@ -96,6 +96,14 @@ extern "C" {
 
         wchar_t message[256];     // latest progress or status line
         wchar_t error[256];       // last error; cleared when a new item starts
+
+        // Overlay diagnostics. All zero while nothing is being drawn on top.
+        // They ride along on the status poll the host already does rather than
+        // costing a call of their own.
+        double  overlayComposeMs;   // rolling mean: decode + blend
+        double  overlayEncodeMs;    // rolling mean
+        int32_t overlayQuality;     // working JPEG quality x100, 30..92
+        int32_t overlayDrops;       // frames that would not fit under the cap
     } JlStatus;
 
     // -----------------------------------------------------------------------
@@ -187,6 +195,33 @@ extern "C" {
     // running to the end of its item.
     JLAPI int64_t jl_pack_cache_bytes(void);
     JLAPI void    jl_pack_cache_clear(void);
+
+    // -----------------------------------------------------------------------
+    // Overlay
+    //
+    // Statistics, clocks and gauges drawn on top of whatever is playing. The
+    // host renders them — it owns the fonts, the layout and the editor — and
+    // hands down finished pixels; this side only blends and re-encodes.
+    //
+    // The surface is 960x480 BGRA with PREMULTIPLIED alpha, which is what
+    // WPF's Pbgra32 already produces, so no conversion is needed on either side.
+    // -----------------------------------------------------------------------
+
+    // Turns compositing on or off. Off is free: no decode, no encode, and
+    // frames reach the panel exactly as they did before this existed. Takes
+    // effect on the next frame, including mid-playback.
+    JLAPI void jl_overlay_set_enabled(int32_t on);
+
+    // Replaces the overlay surface. `w` and `h` must be 960 and 480; anything
+    // else is refused. Copies the pixels, so the caller may reuse its buffer
+    // immediately. Safe to call while something is playing — that is the normal
+    // case, several times a second.
+    JLAPI int32_t jl_overlay_update(const uint8_t* bgraPremultiplied,
+        int32_t w, int32_t h);
+
+    // Drops the surface, leaving nothing drawn. Cheaper than pushing a fully
+    // transparent one, and unlike jl_overlay_set_enabled it forgets the pixels.
+    JLAPI void jl_overlay_clear(void);
 
     // -----------------------------------------------------------------------
 

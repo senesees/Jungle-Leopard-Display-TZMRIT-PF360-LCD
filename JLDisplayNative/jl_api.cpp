@@ -31,7 +31,12 @@ namespace {
     enum class ItemKind { None, Image, Video };
 
     struct Session {
-        jl::Device device;
+        jl::Device  device;
+
+        // Lives for the process, like the device: the host pushes surfaces into
+        // it from its render thread whether or not anything is playing, and each
+        // worker binds its own WIC state to it while it runs.
+        jl::Overlay overlay;
 
         // Two locks, never held together in the other order. `cmd` serialises
         // whole operations (stop-then-start); `state` guards only the fields the
@@ -186,12 +191,44 @@ namespace {
         g.durationSeconds = duration;
     }
 
+    // The two hooks every playback loop takes. Kept as free functions rather
+    // than lambdas so the Compositor stays a plain C-callable pair.
+    bool ComposeFrame(std::vector<uint8_t>& jpeg, void*)
+    {
+        return g.overlay.Compose(jpeg);
+    }
+
+    uint32_t OverlayVersion(void*)
+    {
+        return g.overlay.Version();
+    }
+
+    // Always installed, never conditional on the overlay being on right now:
+    // the user can enable it in the middle of a two-hour video and expect it to
+    // appear. Costing nothing when off is Overlay::Compose's job — it is two
+    // atomic loads and a return — not something to decide once per item.
+    jl::Compositor MakeCompositor()
+    {
+        jl::Compositor c;
+        c.compose = ComposeFrame;
+        c.version = OverlayVersion;
+        return c;
+    }
+
     void PublishFrame(const std::vector<uint8_t>& jpeg)
     {
         Guard lock(g.state);
         g.lastFrameAt = GetTickCount();
         g.lastFrame = jpeg;
         ++g.frameCount;
+    }
+
+    // A still's overlay redraw. Deliberately not OnFrame: that one counts
+    // frames sent and computes a running fps, and a still has never reported
+    // either. All that has changed is which pixels the preview should show.
+    void OnStillFrame(const std::vector<uint8_t>& jpeg, void*)
+    {
+        PublishFrame(jpeg);
     }
 
     jl::Preprocess CurrentMode()
@@ -234,6 +271,16 @@ namespace {
     {
         jl::SetLogSink(WorkerLog, nullptr);   // per-thread; see jl_core.h
 
+        // WIC objects and the COM apartment they live in belong to this thread.
+        // Binding costs nothing when no overlay is ever enabled, and unbinding
+        // on every exit path is what keeps the apartment from outliving it.
+        g.overlay.BindThread();
+        struct Unbind {
+            ~Unbind() { g.overlay.UnbindThread(); }
+        } unbind;
+
+        const jl::Compositor comp = MakeCompositor();
+
         const std::wstring   path = g.itemPath;
         const ItemKind       kind = g.itemKind;
         jl::RenderOpts       opts = g.itemOpts;
@@ -255,7 +302,8 @@ namespace {
             // A still has no natural end: hold it until something else is asked
             // for. finishedCount deliberately does not advance — dwell timing is
             // the host's playlist decision, not ours.
-            if (!g.device.HoldStill(jpeg, ShouldAbort, nullptr) && !ShouldAbort(nullptr))
+            if (!g.device.HoldStill(jpeg, ShouldAbort, nullptr, &comp,
+                    OnStillFrame, nullptr) && !ShouldAbort(nullptr))
                 SetDeviceLost(L"lost the device while holding a still");
             else if (!ShouldAbort(nullptr))
                 SetState(JL_STATE_IDLE);
@@ -293,7 +341,8 @@ namespace {
 
                     jl::PlaybackStats stats;
                     bool ok = jl::PlayPack(g.device, pack, opts, ShouldAbort, nullptr,
-                        OnFrame, nullptr, &stats, TakeSeek, nullptr, OnPosition, nullptr);
+                        OnFrame, nullptr, &stats, TakeSeek, nullptr, OnPosition, nullptr,
+                        &comp);
 
                     FinishPlayback(ok, stats);
                     return 0;
@@ -310,7 +359,8 @@ namespace {
 
             jl::PlaybackStats stats;
             bool ok = jl::PlayVideo(g.device, path, opts, ShouldAbort, nullptr,
-                OnFrame, nullptr, &stats, TakeSeek, nullptr, OnPosition, nullptr);
+                OnFrame, nullptr, &stats, TakeSeek, nullptr, OnPosition, nullptr,
+                &comp);
 
             FinishPlayback(ok, stats);
             return 0;
@@ -562,6 +612,15 @@ void jl_get_status(JlStatus* out)
     CopyTo(out->port, _countof(out->port), g.port);
     CopyTo(out->message, _countof(out->message), g.message);
     CopyTo(out->error, _countof(out->error), g.error);
+
+    // Read straight off the overlay rather than mirrored into the session:
+    // these are its own atomics and plain arithmetic, and nothing here needs
+    // them to agree with the fields above to the exact frame.
+    const jl::Overlay::Stats ov = g.overlay.Snapshot();
+    out->overlayComposeMs = ov.composeMs;
+    out->overlayEncodeMs = ov.encodeMs;
+    out->overlayQuality = (int32_t)(ov.quality * 100.0f + 0.5f);
+    out->overlayDrops = (int32_t)ov.drops;
 }
 
 int32_t jl_get_last_frame(uint8_t* buf, int32_t cap)
@@ -613,6 +672,31 @@ int64_t jl_pack_cache_bytes(void)
 void jl_pack_cache_clear(void)
 {
     jl::PackCacheClear();
+}
+
+// ---------------------------------------------------------------------------
+// Overlay
+//
+// Deliberately independent of the session's command lock. The host renders on
+// its own thread and pushes surfaces whether or not anything is playing, and
+// making that wait on a stop-then-start would stall the render thread behind
+// whatever ffmpeg happens to be doing.
+// ---------------------------------------------------------------------------
+
+void jl_overlay_set_enabled(int32_t on)
+{
+    g.overlay.SetEnabled(on != 0);
+}
+
+int32_t jl_overlay_update(const uint8_t* bgraPremultiplied, int32_t w, int32_t h)
+{
+    if (!bgraPremultiplied) return JL_ERR_BAD_ARGS;
+    return g.overlay.Update(bgraPremultiplied, w, h) ? JL_OK : JL_ERR_BAD_ARGS;
+}
+
+void jl_overlay_clear(void)
+{
+    g.overlay.Clear();
 }
 
 int32_t jl_ffmpeg_path(wchar_t* buf, int32_t cch)

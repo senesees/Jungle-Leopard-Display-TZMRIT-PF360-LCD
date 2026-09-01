@@ -31,6 +31,9 @@
     <ClCompile Include="jl_log.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="jl_overlay.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="jl_pack.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

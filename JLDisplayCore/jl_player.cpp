@@ -45,7 +45,8 @@ namespace jl {
         FrameFn onFrame, void* frameUser,
         PlaybackStats* stats,
         SeekFn takeSeek, void* seekUser,
-        PositionFn onPosition, void* positionUser)
+        PositionFn onPosition, void* positionUser,
+        const Compositor* comp)
     {
         auto aborted = [&] { return abort && abort(abortUser); };
 
@@ -85,6 +86,10 @@ namespace jl {
         bool ok = true;
         bool formatChecked = false;
 
+        // Resolved once: whether anything is being drawn on top decides both the
+        // per-frame work and where the size cap is enforced.
+        const bool composing = comp && comp->Active();
+
         // Only worth asking once, and only if anyone is listening: it spawns
         // ffprobe, and a file that will not say how long it is will not start
         // saying so partway through.
@@ -120,6 +125,14 @@ namespace jl {
                     if (want >= 0.0) { pendingSeek = want; break; }
                 }
 
+                // Compose BEFORE the size check, not after. While an overlay is
+                // being drawn this frame is only an intermediate — the re-encode
+                // decides what actually goes on the wire, and an ffmpeg frame
+                // over the cap is still perfectly decodable and worth drawing
+                // on. While no overlay is being drawn Apply is a no-op and the
+                // check below is exactly the one that has always been here.
+                if (composing && !comp->Apply(frame)) { ++dropped; continue; }
+
                 if (frame.size() > kMaxJpegBytes) { ++dropped; continue; }
 
                 // Once per playback, on the first frame that will actually be
@@ -127,8 +140,9 @@ namespace jl {
                 // is not arrives as a mangled picture rather than as an error —
                 // which is how GIF playback stayed broken: ffmpeg picks the
                 // encoder format from the input, and a GIF decodes to bgra, so
-                // mjpeg chose 4:4:4. The encoder is pinned now, so this should
-                // never fire; if it does, that pin has been lost.
+                // mjpeg chose 4:4:4. Both encoders are pinned now — ffmpeg's by
+                // -pix_fmt, the compositor's by JpegYCrCbSubsampling — so this
+                // should never fire; if it does, one of those pins has been lost.
                 if (!formatChecked) {
                     formatChecked = true;
                     if (!detail::JpegIsBaseline420(frame))

@@ -736,7 +736,8 @@ namespace jl {
         FrameFn onFrame, void* frameUser,
         PlaybackStats* stats,
         SeekFn takeSeek, void* seekUser,
-        PositionFn onPosition, void* positionUser)
+        PositionFn onPosition, void* positionUser,
+        const Compositor* comp)
     {
         auto aborted = [&] { return abort && abort(abortUser); };
 
@@ -758,9 +759,11 @@ namespace jl {
         detail::Pacer pace;
         pace.Start(pack.Fps());
 
-        size_t sent = 0, passes = 0;
+        size_t sent = 0, dropped = 0, passes = 0;
         bool ok = true;
         bool running = true;
+
+        const bool composing = comp && comp->Active();
 
         // One buffer for the whole run: SendImageFrame and the preview callback
         // both want a vector, and reusing this one keeps the per-frame cost to a
@@ -800,6 +803,10 @@ namespace jl {
 
                 scratch.assign(bytes, bytes + len);
 
+                // Packed frames are already panel-ready, so this is the only
+                // thing standing between the cache and the wire.
+                if (composing && !comp->Apply(scratch)) { ++dropped; continue; }
+
                 DWORD now = pace.WaitForSlot();
 
                 if (!device.SendImageFrame(scratch)) { ok = false; running = false; break; }
@@ -825,7 +832,9 @@ namespace jl {
 
         if (stats) {
             stats->sent = sent;
-            stats->dropped = 0;   // a pack cannot hold a frame the panel would refuse
+            // A pack cannot hold a frame the panel would refuse, so this stays
+            // zero unless a compositor re-encoded one past the cap.
+            stats->dropped = dropped;
             stats->passes = passes;
             stats->fps = elapsed > 0 ? sent / elapsed : 0.0;
         }

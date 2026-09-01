@@ -250,12 +250,24 @@ namespace jl {
         return ReadReply(out);
     }
 
-    bool Device::HoldStill(const std::vector<uint8_t>& jpeg, AbortFn abort, void* abortUser)
+    bool Device::HoldStill(const std::vector<uint8_t>& jpeg, AbortFn abort, void* abortUser,
+        const Compositor* comp, FrameFn onFrame, void* frameUser)
     {
         if (!IsOpen()) return false;
 
         SendCommand(cmd::Live);
         Sleep(100);
+
+        // What actually goes out. Without a compositor it is the caller's bytes
+        // and never changes; with one it is the composited result, rebuilt only
+        // when the overlay moves. A still refreshes four times a second, so
+        // recompositing on every refresh would mean four decodes and four
+        // encodes a second to redraw pixels that mostly did not change.
+        const bool composing = comp && comp->Active();
+
+        std::vector<uint8_t> composited;
+        uint32_t builtVersion = 0;
+        bool     haveComposited = false;
 
         // Send it over and over rather than once. The panel draws out of a
         // streaming buffer that the NEXT frame's bytes push through, and it
@@ -276,7 +288,28 @@ namespace jl {
             now = GetTickCount();
 
             if (now - lastFrame >= kStillRefreshMs) {
-                if (!SendImageFrame(jpeg)) return false;
+                const std::vector<uint8_t>* out = &jpeg;
+
+                if (composing) {
+                    const uint32_t v = comp->Version();
+                    if (!haveComposited || v != builtVersion) {
+                        composited = jpeg;
+                        // A frame that will not compose is sent unchanged rather
+                        // than not at all: a still that vanishes is worse than a
+                        // still without its overlay.
+                        if (comp->Apply(composited)) {
+                            haveComposited = true;
+                            builtVersion = v;
+                            if (onFrame) onFrame(composited, frameUser);
+                        }
+                        else {
+                            haveComposited = false;
+                        }
+                    }
+                    if (haveComposited) out = &composited;
+                }
+
+                if (!SendImageFrame(*out)) return false;
                 lastFrame = now;
             }
             if (now - lastKeepAlive >= kLiveKeepAliveMs) {

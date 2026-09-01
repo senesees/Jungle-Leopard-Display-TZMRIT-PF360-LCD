@@ -129,6 +129,52 @@ namespace jl {
     using PositionFn = void (*)(double seconds, double duration, void* user);
 
     // -----------------------------------------------------------------------
+    // Compositing
+    //
+    // The panel has no overlay plane, no alpha and no text primitive: it takes
+    // whole JPEGs and nothing else. So drawing anything on top of the video
+    // means decoding each outgoing frame, blending, and re-encoding it — which
+    // is what a Compositor does, once per frame, on the playback thread.
+    //
+    // Every playback loop takes one optionally. A null Compositor, or one whose
+    // overlay is disabled, is the path taken whenever nobody is drawing
+    // anything, and it must cost nothing: no decode, no encode, no allocation.
+    // -----------------------------------------------------------------------
+
+    // Observes each frame as it goes out, for a live preview. Called on the
+    // playback thread; keep it cheap and copy anything you keep. A frame
+    // reported here is the one that actually reached the panel, overlay and
+    // all, so a preview built from it shows what is really on the glass.
+    using FrameFn = void (*)(const std::vector<uint8_t>& jpeg, void* user);
+
+    // Composites the current overlay onto a panel-ready frame, in place, and
+    // re-encodes it under the panel's size cap. False means the frame could not
+    // be produced at any acceptable quality; the caller drops it exactly as it
+    // drops an oversized one.
+    using ComposeFn = bool (*)(std::vector<uint8_t>& jpeg, void* user);
+
+    // What the overlay currently looks like, as a counter that changes whenever
+    // it does. A still holds one composited frame until this moves, so a static
+    // overlay on a still costs nothing after the first frame — without it, a
+    // still would re-encode four times a second forever.
+    using OverlayVersionFn = uint32_t (*)(void* user);
+
+    struct Compositor {
+        ComposeFn        compose = nullptr;
+        OverlayVersionFn version = nullptr;
+        void*            user = nullptr;
+
+        bool Active() const { return compose != nullptr; }
+
+        bool Apply(std::vector<uint8_t>& jpeg) const
+        {
+            return compose ? compose(jpeg, user) : true;
+        }
+
+        uint32_t Version() const { return version ? version(user) : 0; }
+    };
+
+    // -----------------------------------------------------------------------
     // Device
     // -----------------------------------------------------------------------
 
@@ -175,7 +221,17 @@ namespace jl {
         // frame once the following one arrives, so a still has to be sent
         // repeatedly rather than once. Blocking; this is what "showing a
         // picture" actually means on this panel.
-        bool HoldStill(const std::vector<uint8_t>& jpeg, AbortFn abort, void* abortUser);
+        //
+        // With a Compositor, the overlay is drawn onto `jpeg` and the result
+        // re-sent instead — recomposited only when the overlay's version moves,
+        // so the four-a-second refresh does not become four encodes a second.
+        //
+        // `onFrame` fires whenever that composited frame is rebuilt, not on
+        // every refresh: a still sends the same bytes over and over, and only
+        // the moments they change are worth telling anyone about.
+        bool HoldStill(const std::vector<uint8_t>& jpeg, AbortFn abort, void* abortUser,
+            const Compositor* comp = nullptr,
+            FrameFn onFrame = nullptr, void* frameUser = nullptr);
 
         // Flushes any partial frame with a bare JPEG end-of-image marker.
         void FlushEoi();
@@ -211,9 +267,6 @@ namespace jl {
     int ResolveQuality(const std::wstring& path, const RenderOpts& opts,
         AbortFn abort = nullptr, void* abortUser = nullptr);
 
-    // Observes each frame as it goes out, for a live preview. Called on the
-    // playback thread; keep it cheap and copy anything you keep.
-    using FrameFn = void (*)(const std::vector<uint8_t>& jpeg, void* user);
 
     struct PlaybackStats {
         size_t sent = 0;
@@ -236,7 +289,8 @@ namespace jl {
         FrameFn onFrame, void* frameUser,
         PlaybackStats* stats,
         SeekFn takeSeek = nullptr, void* seekUser = nullptr,
-        PositionFn onPosition = nullptr, void* positionUser = nullptr);
+        PositionFn onPosition = nullptr, void* positionUser = nullptr,
+        const Compositor* comp = nullptr);
 
     // -----------------------------------------------------------------------
     // Preprocessing
@@ -356,7 +410,8 @@ namespace jl {
         FrameFn onFrame, void* frameUser,
         PlaybackStats* stats,
         SeekFn takeSeek = nullptr, void* seekUser = nullptr,
-        PositionFn onPosition = nullptr, void* positionUser = nullptr);
+        PositionFn onPosition = nullptr, void* positionUser = nullptr,
+        const Compositor* comp = nullptr);
 
     // PrepareImage with the answer remembered, so a still in a playlist is
     // transcoded once rather than once per rotation. Off transcodes every time.
@@ -368,6 +423,65 @@ namespace jl {
     // deleted underneath it.
     uint64_t PackCacheBytes();
     void     PackCacheClear();
+
+    // -----------------------------------------------------------------------
+    // Overlay
+    //
+    // A 960x480 premultiplied BGRA surface, and the machinery to blend it onto
+    // outgoing frames. The surface is produced elsewhere — the tray app renders
+    // its layers with WPF and pushes the pixels down — because everything about
+    // fonts, layout and styling belongs where the editor is, and everything
+    // about JPEG belongs here.
+    //
+    // Measured cost at 960x480: decode ~0.9 ms, blend ~0.3 ms, encode ~0.9 ms.
+    // Against a 33 ms frame budget at 30 fps that is comfortable, but only
+    // because none of it happens at all when no overlay is enabled.
+    // -----------------------------------------------------------------------
+
+    class Overlay {
+    public:
+        Overlay();
+        ~Overlay();
+
+        Overlay(const Overlay&) = delete;
+        Overlay& operator=(const Overlay&) = delete;
+
+        // WIC objects and the COM apartment they live in belong to the thread
+        // that composites. Every playback worker calls Bind on entry and Unbind
+        // on exit; composing on an unbound thread fails rather than guessing.
+        bool BindThread();
+        void UnbindThread();
+
+        void SetEnabled(bool on);
+        bool Enabled() const;
+
+        // Replaces the surface, which must be exactly kPanelWidth x
+        // kPanelHeight of premultiplied BGRA. Safe from any thread, and never
+        // blocks the playback thread for longer than a pointer swap.
+        bool Update(const uint8_t* bgraPremultiplied, int width, int height);
+        void Clear();
+
+        // Moves whenever the surface does. See OverlayVersionFn.
+        uint32_t Version() const;
+
+        // Decode, blend, re-encode. Returns false only when the frame could not
+        // be encoded under the panel's cap at any quality down to the floor.
+        bool Compose(std::vector<uint8_t>& jpeg);
+
+        struct Stats {
+            double   composeMs = 0.0;   // rolling mean of decode + blend
+            double   encodeMs = 0.0;   // rolling mean
+            float    quality = 0.0f;  // the working quality, 0..1
+            uint32_t reencodes = 0;     // frames that needed more than one encode
+            uint32_t drops = 0;     // frames that would not fit at all
+        };
+
+        Stats Snapshot() const;
+
+    private:
+        struct Impl;
+        Impl* p_ = nullptr;
+    };
 
     // -----------------------------------------------------------------------
     // ffmpeg

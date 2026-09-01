@@ -215,7 +215,7 @@
 
                     <TextBlock x:Name="CanvasHint" Grid.Row="3" Margin="0,10,0,0" FontSize="11"
                                TextWrapping="Wrap" Foreground="{StaticResource TextDim}"
-                               Text="Drag to move, handles to resize. Arrows nudge by 1, Shift+arrow by 10, Alt ignores snapping. Del removes · Ctrl+D duplicates · Ctrl+↑/↓ reorders · Ctrl+H hides · Ctrl+L locks · Tab cycles · Esc deselects."/>
+                               Text="Drag to move, handles to resize. Arrows nudge by 1, Shift+arrow by 10, Alt ignores snapping. Del removes · Ctrl+D duplicates · Ctrl+↑/↓ reorders · Ctrl+H hides · Ctrl+L locks · Ctrl+Z undoes · Tab cycles · Esc deselects."/>
                 </Grid>
             </Border>
 

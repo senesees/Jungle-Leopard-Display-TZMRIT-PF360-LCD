@@ -43,8 +43,9 @@ without it, calibration reports elapsed time instead of progress.
 
 A portable x64 build is attached to each [release][releases]: unzip anywhere and
 run, no installer and no registry keys. It carries the tray app, the CLI and the
-native core — about 220 KB — and still wants the two prerequisites above, since
-neither the .NET runtime nor ffmpeg is bundled.
+native core — under a megabyte between them — plus `yt-dlp.exe`, which is most of
+the download. It still wants the two prerequisites above, since neither the .NET
+runtime nor ffmpeg is bundled.
 
 [releases]: https://github.com/senesees/Jungle-Leopard-Display-TZMRIT-PF360-LCD/releases
 
@@ -258,7 +259,11 @@ than something bolted alongside it.
 ### Layers
 
 **Overlay** — on the tray menu, or the button in the main window — opens the
-editor. A profile is a stack of layers
+editor.
+
+![The overlay editor](docs/editor.png)
+
+A profile is a stack of layers
 over the 960×480 surface, each anchored to a corner, edge or the centre so a
 readout pinned bottom-right stays there.
 

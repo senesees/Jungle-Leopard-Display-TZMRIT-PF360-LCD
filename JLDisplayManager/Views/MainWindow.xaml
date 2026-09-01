@@ -149,6 +149,9 @@
                         <Button Content="AI" Style="{StaticResource Btn}" Click="OnAi"
                                 Margin="0,0,8,0"
                                 ToolTip="Generate images automatically and put them on the panel"/>
+                        <Button Content="Overlay" Style="{StaticResource Btn}" Click="OnOverlay"
+                                Margin="0,0,8,0"
+                                ToolTip="Draw system statistics on top of whatever is playing"/>
                         <Button Content="Settings" Style="{StaticResource Btn}" Click="OnSettings"/>
                     </StackPanel>
                 </Grid>

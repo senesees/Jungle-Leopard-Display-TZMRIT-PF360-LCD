@@ -1,0 +1,241 @@
+<Window x:Class="JLDisplayManager.Views.OverlayEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ov="clr-namespace:JLDisplayManager.Views.Overlay"
+        Title="Overlay" Height="820" Width="1360"
+        Background="{StaticResource Bg}"
+        WindowStartupLocation="CenterOwner"
+        MinHeight="640" MinWidth="1100">
+
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Profile bar -->
+        <Border Grid.Row="0" Padding="10,8" CornerRadius="6" Margin="0,0,0,12"
+                Background="{StaticResource BgRaised}" BorderThickness="1"
+                BorderBrush="{StaticResource Line}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <CheckBox x:Name="EnabledBox" Grid.Column="0" Content="Overlay on"
+                          VerticalAlignment="Center" Margin="0,0,16,0"
+                          Checked="OnEnabledChanged" Unchecked="OnEnabledChanged"/>
+
+                <TextBlock Grid.Column="1" Text="Profile" VerticalAlignment="Center"
+                           Margin="0,0,8,0" Foreground="{StaticResource TextDim}"/>
+
+                <ComboBox x:Name="ProfileBox" Grid.Column="2" VerticalAlignment="Center"
+                          ItemTemplate="{StaticResource ComboText}"
+                          SelectionChanged="OnProfileSelected"/>
+
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,0">
+                    <Button Content="New" Style="{StaticResource Btn}" Click="OnNewProfile"/>
+                    <Button Content="Duplicate" Style="{StaticResource Btn}" Margin="6,0,0,0"
+                            Click="OnDuplicateProfile"/>
+                    <Button Content="Rename" Style="{StaticResource Btn}" Margin="6,0,0,0"
+                            Click="OnRenameProfile"/>
+                    <Button Content="Delete" Style="{StaticResource Btn}" Margin="6,0,0,0"
+                            Click="OnDeleteProfile"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="5" Orientation="Horizontal">
+                    <TextBlock Text="Theme" VerticalAlignment="Center" Margin="0,0,6,0"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox x:Name="ThemeBox" Width="104" VerticalAlignment="Center"
+                              ItemTemplate="{StaticResource ComboText}"
+                              SelectionChanged="OnThemeChanged"/>
+
+                    <TextBlock Text="Backdrop" VerticalAlignment="Center" Margin="14,0,6,0"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox x:Name="BackdropBox" Width="130" VerticalAlignment="Center"
+                              ItemTemplate="{StaticResource ComboText}"
+                              SelectionChanged="OnBackdropChanged"/>
+                    <TextBlock Text="Zoom" VerticalAlignment="Center" Margin="14,0,6,0"
+                               Foreground="{StaticResource TextDim}"/>
+                    <ComboBox x:Name="ZoomBox" Width="76" VerticalAlignment="Center"
+                              ItemTemplate="{StaticResource ComboText}"
+                              SelectionChanged="OnZoomChanged"/>
+                    <CheckBox x:Name="GridBox" Content="Grid" VerticalAlignment="Center"
+                              Margin="14,0,0,0" Checked="OnViewOptionChanged"
+                              Unchecked="OnViewOptionChanged"/>
+                    <CheckBox x:Name="SnapBox" Content="Snap" VerticalAlignment="Center"
+                              Margin="10,0,0,0" IsChecked="True"
+                              Checked="OnViewOptionChanged" Unchecked="OnViewOptionChanged"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="230"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="300"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Layers -->
+            <Border Grid.Column="0" Padding="10" CornerRadius="6" Margin="0,0,12,0"
+                    Background="{StaticResource BgRaised}" BorderThickness="1"
+                    BorderBrush="{StaticResource Line}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="LAYERS" Style="{StaticResource Heading}"/>
+
+                    <!-- Topmost first, the way a stack is normally read -->
+                    <ListBox x:Name="LayerList" Grid.Row="1" Margin="0,0,0,8"
+                             Background="Transparent" BorderThickness="0"
+                             SelectionChanged="OnLayerSelected"/>
+
+                    <StackPanel Grid.Row="2">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Button Content="Text" Style="{StaticResource Btn}" Click="OnAddText"/>
+                            <Button Content="Bar" Style="{StaticResource Btn}" Margin="4,0,0,0"
+                                    Click="OnAddBar"/>
+                            <Button Content="Gauge" Style="{StaticResource Btn}" Margin="4,0,0,0"
+                                    Click="OnAddGauge"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Button Content="Graph" Style="{StaticResource Btn}"
+                                    ToolTip="A sparkline of the last minute"
+                                    Click="OnAddGraph"/>
+                            <Button Content="Icon" Style="{StaticResource Btn}" Margin="4,0,0,0"
+                                    ToolTip="One symbol from the system icon font"
+                                    Click="OnAddGlyph"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <Button Content="Shape" Style="{StaticResource Btn}" Click="OnAddShape"/>
+                            <Button Content="Image" Style="{StaticResource Btn}" Margin="4,0,0,0"
+                                    Click="OnAddImage"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Button x:Name="UndoButton" Content="Undo"
+                                    Style="{StaticResource Btn}" IsEnabled="False"
+                                    ToolTip="Undo the last change (Ctrl+Z)" Click="OnUndo"/>
+                            <Button x:Name="RedoButton" Content="Redo"
+                                    Style="{StaticResource Btn}" Margin="4,0,0,0"
+                                    IsEnabled="False"
+                                    ToolTip="Redo (Ctrl+Y)" Click="OnRedo"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="↑" Style="{StaticResource Btn}" Width="30"
+                                    ToolTip="Bring forward" Click="OnMoveUp"/>
+                            <Button Content="↓" Style="{StaticResource Btn}" Width="30" Margin="4,0,0,0"
+                                    ToolTip="Send backward" Click="OnMoveDown"/>
+                            <Button Content="Copy" Style="{StaticResource Btn}" Margin="4,0,0,0"
+                                    ToolTip="Duplicate this layer" Click="OnDuplicateLayer"/>
+                            <Button Content="Remove" Style="{StaticResource Btn}" Margin="4,0,0,0"
+                                    ToolTip="Delete this layer" Click="OnDeleteLayer"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Canvas -->
+            <Border Grid.Column="1" CornerRadius="6" Padding="10"
+                    Background="{StaticResource BgSunken}" BorderThickness="1"
+                    BorderBrush="{StaticResource Line}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Ask for what you want. Sits with the canvas rather than
+                         the layer list because the result wants looking at. -->
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox x:Name="PromptBox" Grid.Column="0"
+                                 KeyDown="OnPromptKeyDown"
+                                 ToolTip="Describe what you want, e.g. &quot;add GPU usage bottom left&quot;"/>
+
+                        <Button x:Name="GenerateButton" Grid.Column="1" Content="Generate"
+                                Style="{StaticResource BtnPrimary}" Margin="8,0,0,0"
+                                Click="OnGenerate"/>
+                    </Grid>
+
+                    <!-- The pending result. Nothing is saved or sent to the
+                         panel permanently until Accept. -->
+                    <Border x:Name="AiBanner" Grid.Row="1" Margin="0,0,0,10" Padding="10,8"
+                            CornerRadius="5" Visibility="Collapsed"
+                            Background="#1F1B16" BorderThickness="1"
+                            BorderBrush="{StaticResource AccentDim}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock x:Name="AiHeadline" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="AiDetail" TextWrapping="Wrap" FontSize="11"
+                                           Margin="0,3,0,0" Visibility="Collapsed"
+                                           Foreground="{StaticResource TextDim}"/>
+                            </StackPanel>
+
+                            <StackPanel x:Name="AiActions" Grid.Column="1"
+                                        Orientation="Horizontal" Margin="10,0,0,0">
+                                <Button x:Name="AiIntentButton" Style="{StaticResource Btn}"
+                                        Margin="0,0,6,0" Click="OnFlipIntent"/>
+                                <Button Content="Try again" Style="{StaticResource Btn}"
+                                        Margin="0,0,6,0" Click="OnRetryGenerate"/>
+                                <Button Content="Discard" Style="{StaticResource Btn}"
+                                        Margin="0,0,6,0" Click="OnDiscardGenerated"/>
+                                <Button Content="Accept" Style="{StaticResource BtnPrimary}"
+                                        Click="OnAcceptGenerated"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto">
+                        <ov:OverlayCanvas x:Name="Canvas" HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                    </ScrollViewer>
+
+                    <TextBlock x:Name="CanvasHint" Grid.Row="3" Margin="0,10,0,0" FontSize="11"
+                               TextWrapping="Wrap" Foreground="{StaticResource TextDim}"
+                               Text="Drag to move, handles to resize. Arrows nudge by 1, Shift+arrow by 10, Alt ignores snapping. Del removes · Ctrl+D duplicates · Ctrl+↑/↓ reorders · Ctrl+H hides · Ctrl+L locks · Tab cycles · Esc deselects."/>
+                </Grid>
+            </Border>
+
+            <!-- Properties -->
+            <Border Grid.Column="2" CornerRadius="6" Margin="12,0,0,0"
+                    Background="{StaticResource BgRaised}" BorderThickness="1"
+                    BorderBrush="{StaticResource Line}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                    <ov:PropertyPanel x:Name="Properties"/>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- Footer -->
+        <Grid Grid.Row="2" Margin="0,12,0,0">
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center"
+                       Foreground="{StaticResource TextDim}" FontSize="11"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Close" Style="{StaticResource Btn}" Click="OnClose"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

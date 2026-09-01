@@ -794,6 +794,27 @@ public partial class MainWindow : Window
         _app.Display.ApplyBrightness();
     }
 
+    /// <summary>Opens the editor from somewhere other than the header button.</summary>
+    public void OpenOverlayEditor() => OnOverlay(this, new RoutedEventArgs());
+
+    private void OnOverlay(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            // Not a dialog: designing against the live panel means watching it
+            // while the window is open, and a modal one cannot be moved aside
+            // to see what changed.
+            var window = new OverlayEditorWindow { Owner = this };
+            window.Show();
+        }
+        catch (Exception ex)
+        {
+            Storage.Log("overlay editor failed: " + ex);
+            MessageBox.Show(this, ex.Message, "Overlay",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         try
